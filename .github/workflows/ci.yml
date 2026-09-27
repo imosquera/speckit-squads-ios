@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun check-cli-usage.ts
+      - run: bun run test
+
+  ios-smoke:
+    # The only job with real Xcode + Simulator: covers what the fake-binary tests can't.
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: brew install xcodegen
+      - run: xcodebuild -version && xcrun simctl list runtimes
+      - run: bun scripts/ci-ios-smoke.ts
