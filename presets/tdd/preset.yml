@@ -1,0 +1,40 @@
+schema_version: "1.0"
+
+preset:
+  id: "tdd"
+  name: "Test-Driven Development"
+  version: "1.2.0"
+  description: "Wraps /speckit-implement in the Red-Green-Refactor cycle: list the scenarios, then for each one write a failing test, watch it fail for the expected reason, write the simplest code that passes, and refactor with the suite green. Gated at the end by a full test run and check-tests-accompany.ts, which fails when production code changed with no test change. Optional Jev assist (the shared jev.ts helper, @typesafe-ai/sdk installed lazily on first use) answers the per-cycle judgment calls when TYPESAFE_API_KEY is set; SPECKIT_JEV=off disables it. See presets/tdd/README.md."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "check-tests-accompany.ts"
+      file: "scripts/ts/check-tests-accompany.ts"
+      command: "speckit.implement"
+      executable: true
+    - name: "jev.ts"
+      file: "scripts/ts/jev.ts"
+      command: "speckit.implement"
+      executable: true
+    - name: "selftest-tdd.ts"
+      file: "scripts/ts/selftest-tdd.ts"
+      executable: true
+
+  templates:
+    - type: "command"
+      name: "speckit.implement"
+      file: "commands/speckit.implement.md"
+      description: "Composable wrapper for /speckit-implement that drives every task through Red-Green-Refactor and gates completion on a green suite with tests accompanying every production change."
+      strategy: "wrap"
+
+tags:
+  - "implement"
+  - "tdd"
+  - "testing"
+  - "governance"

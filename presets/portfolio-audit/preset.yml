@@ -1,0 +1,28 @@
+schema_version: "1.0"
+
+preset:
+  id: "portfolio-audit"
+  name: "Portfolio Audit Preset for /speckit-analyze"
+  version: "1.0.0"
+  description: "Extends /speckit-analyze with a portfolio-wide audit mode that cross-references GitHub issues (open and closed) against every spec across main and all git worktrees. Triggered when $ARGUMENTS contains 'portfolio' OR when /speckit-analyze is invoked from a non-feature branch (e.g. main) — in that case the stock command's abort is replaced with this preset's portfolio audit. Also extends the per-feature analysis path with a worktree fallback: missing local artifacts are read from <repo>.worktrees/<slug>/specs/<slug>/ even when stale (staleness is reported as a MEDIUM finding, not an abort)."
+  author: "beadbits"
+  repository: "local"
+  license: "same-as-project"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  templates:
+    - type: "command"
+      name: "speckit.analyze"
+      file: "commands/speckit.analyze.md"
+      description: "Adds portfolio-audit preset mode and worktree fallback to /speckit-analyze without replacing the stock per-feature analysis."
+      strategy: "wrap"
+
+tags:
+  - "analyze"
+  - "portfolio"
+  - "worktree"
+  - "audit"
+  - "github-issues"

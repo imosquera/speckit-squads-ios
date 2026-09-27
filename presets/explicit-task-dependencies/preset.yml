@@ -1,0 +1,40 @@
+schema_version: "1.0"
+
+preset:
+  id: "explicit-task-dependencies"
+  name: "Explicit Task Dependencies"
+  version: "1.2.0"
+  description: "Adds explicit (depends on T###) dependency declarations and an Execution Wave DAG to tasks.md, plus a /speckit-implement override that fans each wave's parallel-safe tasks out to subagents in one tool-call batch."
+  author: "Quratulain-bilal"
+  repository: "https://github.com/Quratulain-bilal/spec-kit-preset-explicit-task-dependencies"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.4.0"
+
+provides:
+  templates:
+    - type: "template"
+      name: "tasks-template"
+      file: "templates/tasks-template.md"
+      description: "Tasks template with explicit dependency declarations and Execution Wave DAG"
+      strategy: "replace"
+
+    - type: "command"
+      name: "speckit.tasks"
+      file: "commands/speckit.tasks.md"
+      description: "Tasks command with dependency suffix and Wave DAG generation instructions"
+      strategy: "replace"
+
+    - type: "command"
+      name: "speckit.implement"
+      strategy: "replace"
+      file: "commands/speckit.implement.md"
+      description: "Implement command that walks the Execution Wave DAG and dispatches each wave's [P] tasks to subagents in parallel"
+
+tags:
+  - "dependencies"
+  - "parallel"
+  - "scheduling"
+  - "wave-dag"
+  - "subagents"

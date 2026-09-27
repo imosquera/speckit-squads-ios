@@ -1,0 +1,52 @@
+schema_version: "1.0"
+
+preset:
+  id: "parse-dont-validate"
+  name: "Parse, Don't Validate"
+  version: "1.3.0"
+  description: "Overrides /speckit-constitution, /speckit-plan, and /speckit-implement to enforce the 'parse, don't validate' discipline across TypeScript and Python — untrusted input stays untyped-safe (`unknown` / unparsed) at the boundary, parsers return branded/nominal domain types, and a deterministic scanner gates completion by flagging `any`/`Any`, stray deserialization, boolean validators, and casts outside parser modules."
+  author: "speckit-squads"
+  repository: "local"
+  license: "same-as-project"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "parse_dont_validate.ts"
+      file: "scripts/ts/parse_dont_validate.ts"
+      executable: true
+      description: "checklist + scan for parse-don't-validate anti-patterns in changed TypeScript — and Python only with PDV_PYTHON=1, skipped otherwise for now — (any/Any / stray JSON.parse & json.loads / boolean validators / narrowing casts outside parser modules), with line-comment waivers. Run by bun. `scan` anchors change-set detection at the git worktree root (never the cwd) and `--new-only` subtracts findings that already reproduce on the base ref, matched by (file, rule, source text). A scan that examined zero files never exits zero: an unknown option exits 2, unresolvable paths or a non-repo cwd exit 3, and an empty change set exits 4. No line regex: TypeScript via the bun helper's real oxc-parser AST, Python via an in-process Python tokenizer plus a statement-level pass (annotations, def headers, calls, f-string expressions); unbalanced brackets or unterminated strings exit 3. bun built-ins only."
+    - name: "pdv_ts_scan.ts"
+      file: "scripts/ts/pdv_ts_scan.ts"
+      executable: true
+      description: "TypeScript helper, run by bun, that parses TS/TSX with `oxc-parser` (pinned 0.151.0, via its native binding), walks the ESTree AST and emits findings as JSON. Needs no `typescript` install — TS 7, TS 5 or none all work (issue #115). The parser is never resolved from the consumer project: it comes from the machine cache `~/.cache/speckit-squads/pdv`, filled with `bun add` on first use (never `.specify/`), or from the speckit-squads checkout's own copy. Jobs of 100+ files are split across worker threads. Exits 3 (no regex fallback) when the parser cannot be installed or loaded, or a file fails to parse. Never prints an empty findings list for a job it could not use — file arguments, empty/malformed stdin and a zero-file job all exit non-zero."
+
+  templates:
+    - type: "command"
+      name: "speckit.constitution"
+      strategy: "wrap"
+      file: "commands/speckit.constitution.md"
+      description: "Constitution command that always injects a canonical 'Parse, Don't Validate' governance section"
+
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Plan command that requires a 'Parse Boundaries' design section (trust boundaries + branded domain types + parsers). Chainable: exposes a {CORE_TEMPLATE} seam so other presets can wrap it."
+      strategy: "wrap"
+    - type: "command"
+      name: "speckit.implement"
+      strategy: "wrap"
+      file: "commands/speckit.implement.md"
+      description: "Implement command that applies the parse-don't-validate discipline while writing TypeScript and gates completion on a deterministic anti-pattern scan"
+
+tags:
+  - "implement"
+  - "typescript"
+  - "python"
+  - "type-safety"
+  - "parsing"
+  - "domain-modeling"
+  - "functional-programming"
+  - "governance"

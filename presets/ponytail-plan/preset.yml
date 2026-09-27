@@ -1,0 +1,36 @@
+schema_version: "1.0"
+
+preset:
+  id: "ponytail-plan"
+  name: "Ponytail Plan"
+  version: "1.0.0"
+  description: "Applies the ponytail ladder (YAGNI, reuse, stdlib, native platform, installed dependency, one line, minimum new code) at the plan phase, where new files, abstractions, dependencies and config knobs get committed to. Every such item plan.md proposes is climbed, cut or rewritten in place when a lower rung holds, and recorded in a mandatory `## Ladder` table; a new dependency needs a `**Dependency justification:**` line. check-ladder.ts is the deterministic gate. Works without the ponytail plugin installed. See presets/ponytail-plan/README.md."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "check-ladder.ts"
+      file: "scripts/ts/check-ladder.ts"
+      executable: true
+      command: "speckit.plan"
+    - name: "selftest-ponytail-plan.ts"
+      file: "scripts/ts/selftest-ponytail-plan.ts"
+      executable: true
+
+  templates:
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Composable wrapper for /speckit-plan that climbs the ponytail ladder for every new file, abstraction, dependency and config knob the finished plan proposes, and records the result in a mandatory `## Ladder` section."
+      strategy: "wrap"
+
+tags:
+  - "ponytail-plan"
+  - "ponytail"
+  - "minimal"
+  - "yagni"

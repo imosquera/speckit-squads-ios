@@ -1,0 +1,53 @@
+schema_version: "1.0"
+
+extension:
+  id: "stale-tasks-guard"
+  name: "Stale-Tasks Guard"
+  version: "1.1.0"
+  description: "Halts /speckit-implement when spec.md was modified more recently than tasks.md — the signal that a late /speckit-clarify or /speckit-specify edit invalidated the task plan. Shipped as an extension (before_implement hook) rather than a preset wrap/replace so it fires regardless of which preset owns the /speckit-implement command body (e.g. parse-dont-validate, explicit-task-dependencies)."
+  author: "speckit-squads"
+  repository: "local"
+  license: "same-as-project"
+
+requires:
+  speckit_version: ">=0.6.0"
+  tools:
+    - name: bun
+      required: true
+    - name: git
+      required: false
+
+provides:
+  scripts:
+    - name: "stale-tasks-guard.ts"
+      file: "scripts/ts/stale-tasks-guard.ts"
+      executable: true
+      command: speckit.stale-tasks-guard.implement
+      description: "Deterministic mtime/commit-time comparison of spec.md vs tasks.md. Resolves the feature directory from SPECIFY_FEATURE_DIRECTORY, else SPECIFY_FEATURE, else the current git branch (specs/<branch>) — never from .specify/feature.json, whose feature_directory key exists only for core Spec Kit's own resolver and is not a path source for us. Exit 0 = not stale or guard skipped (unresolvable feature directory, missing files); exit 1 = stale, prints the STALE TASKS banner. TypeScript run by bun, built-ins only; uses git commit time instead of raw mtime for clean files so a fresh worktree checkout doesn't defeat the comparison."
+    - name: "jev.ts"
+      file: "scripts/ts/jev.ts"
+      executable: true
+      command: speckit.stale-tasks-guard.implement
+      description: "Byte-identical copy of the repo's canonical scripts/jev.ts. stale-tasks-guard.ts calls its spec-change case with the spec.md diff since tasks.md was last committed; only a confident wording verdict (exit 0) lets the run proceed. Exit 3 (SPECKIT_JEV=off, no TYPESAFE_API_KEY, no SDK, API error, low confidence) leaves the halt unchanged."
+    - name: "selftest-stale-tasks-guard.ts"
+      file: "scripts/ts/selftest-stale-tasks-guard.ts"
+      executable: true
+      description: "Self-contained fixture test for stale-tasks-guard.ts (mtime vs commit time, dirty files, env/branch resolution, skips, Jev assist against a fake Jev server). Run: bun scripts/ts/selftest-stale-tasks-guard.ts"
+
+  commands:
+    - name: "speckit.stale-tasks-guard.implement"
+      file: "commands/implement.md"
+      description: "Hook target for before_implement: runs stale-tasks-guard.ts and halts the run on exit 1 (or exit 2 when bun is missing), unless --force was passed on the /speckit-implement invocation."
+
+hooks:
+  before_implement:
+    command: "speckit.stale-tasks-guard.implement"
+    optional: false
+    description: "Detect a stale tasks.md (spec.md modified after tasks.md was generated) and halt /speckit-implement before the implementation loop starts, unless --force is present."
+    condition: null
+
+tags:
+  - "implement"
+  - "guard"
+  - "hooks"
+  - "tasks"

@@ -1,0 +1,49 @@
+schema_version: "1.0"
+
+preset:
+  id: "diff-minimal"
+  name: "Diff Minimal"
+  version: "1.0.0"
+  description: "Adds a minimum-diff mandate to the spec phase: re-derive the issue's file paths and preconditions against main, specify the smallest change that satisfies the requirements, and record the result in two mandatory sections — `## Corrections to the issue as filed` and a machine-checkable `## Scope discipline`. A post-flight check asserts both exist; the /speckit-plan layer then refuses a plan that touches a path the spec put out of scope. Sibling to spec-minimal, which makes the spec shorter; this one makes the change smaller. See presets/diff-minimal/README.md."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "scope-common.ts"
+      file: "scripts/ts/scope-common.ts"
+      executable: false
+    - name: "check-scope-sections.ts"
+      file: "scripts/ts/check-scope-sections.ts"
+      executable: true
+      command: "speckit.specify"
+    - name: "check-plan-scope.ts"
+      file: "scripts/ts/check-plan-scope.ts"
+      executable: true
+      command: "speckit.plan"
+    - name: "selftest-diff-minimal.ts"
+      file: "scripts/ts/selftest-diff-minimal.ts"
+      executable: true
+
+  templates:
+    - type: "command"
+      name: "speckit.specify"
+      file: "commands/speckit.specify.md"
+      description: "Composable wrapper for /speckit-specify that imposes the minimum-diff mandate and requires the Corrections and Scope discipline sections."
+      strategy: "wrap"
+
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Composable wrapper for /speckit-plan that holds the plan to the spec's Scope discipline contract."
+      strategy: "wrap"
+
+tags:
+  - "diff-minimal"
+  - "minimal"
+  - "scope"
+  - "review"

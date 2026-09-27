@@ -1,0 +1,34 @@
+schema_version: "1.0"
+
+extension:
+  id: archive
+  name: "Feature Archive Workflow"
+  version: "1.1.0"
+  description: "Archive a completed feature planning folder under specs/archive/YYYY-MM-DD-{slug}/, update CHANGES.md, and close associated GitHub issues."
+  author: imosquera
+  license: MIT
+
+requires:
+  speckit_version: ">=0.2.0"
+  tools:
+    - name: git
+      required: true
+    - name: gh
+      required: false
+
+provides:
+  scripts:
+    - name: archive-feature.ts
+      file: scripts/ts/archive-feature.ts
+      executable: true
+      command: speckit.archive.feature
+
+  commands:
+    - name: speckit.archive.feature
+      file: commands/speckit.archive.feature.md
+      description: "Archive the current feature directory and close linked GitHub issues"
+
+tags:
+  - "archive"
+  - "workflow"
+  - "github"
