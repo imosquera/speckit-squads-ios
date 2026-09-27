@@ -51,26 +51,34 @@ if (!base) die(2, "no base ref resolvable; pass --base <ref>");
 const mb = git("merge-base", base, "HEAD");
 if (!mb) die(2, `no merge-base between ${base} and HEAD`);
 
+// Spec Kit's installed tooling under .specify/ is vendored, not the project's
+// code: a reinstall must not demand tests. The same goes for dependency and
+// build trees that some iOS projects commit (CocoaPods, Carthage, SwiftPM's
+// .build/, DerivedData).
+const VENDORED = /^\.specify\/|(^|\/)(Pods|Carthage|\.build|DerivedData)\//;
 const changed = [...new Set([
   ...(git("diff", "--name-only", "--diff-filter=d", mb) ?? "").split("\n"),
   ...(git("ls-files", "--others", "--exclude-standard") ?? "").split("\n"),
-// Spec Kit's installed tooling under .specify/ is vendored, not the project's
-// code: a reinstall must not demand tests.
-].filter(p => p && !p.startsWith(".specify/")))].sort();
+].filter(p => p && !VENDORED.test(p)))].sort();
 if (!changed.length) die(4, `tdd: empty change set against ${base} — nothing examined`);
 
-const TEST_DIR = /\/(tests?|__tests__|specs?|testing)\//;
-const TEST_NAME = [/^test_.*\.py$/, /_test\.(py|go|rb|exs?)$/, /\.(test|spec)\.[A-Za-z]+$/,
-  /_spec\.rb$/, /(Test|Tests|Spec)\.(java|kt|swift|cs|scala|php)$/, /^test-.*\.sh$/];
-const SOURCE = /\.(py|ts|tsx|js|jsx|mjs|cjs|go|rs|rb|java|kt|swift|cs|php|c|cc|cpp|h|hpp|scala|ex|exs|sh)$/;
+// Test files: anything under an XCTest/Swift Testing target directory (SPM's
+// Tests/, Xcode's <Target>Tests/ and <Target>UITests/) or a generic tests/
+// dir, plus Swift and Objective-C files named *Test / *Tests / *Spec.
+const TEST_DIR = /\/([^/]*Tests|tests?)\//;
+const TEST_NAME = /(Test|Tests|Spec)\.(swift|m|mm)$/;
+// Production code: Swift, Objective-C(++), C/C++ and Metal shaders. Package
+// manifests are configuration. Everything else (asset catalogs, storyboards
+// and xibs, plists, .xcstrings, project.pbxproj, Package.resolved,
+// .xcconfig) is non-code: it never demands a test.
+const SOURCE = /\.(swift|m|mm|h|c|cc|cpp|hpp|metal)$/;
+const MANIFEST = /^Package(@swift-[\d.]+)?\.swift$/;
 
-const isTest = (p: string) => {
-  const name = p.slice(p.lastIndexOf("/") + 1);
-  return TEST_DIR.test(`/${p}`) || TEST_NAME.some(re => re.test(name));
-};
+const nameOf = (p: string) => p.slice(p.lastIndexOf("/") + 1);
+const isTest = (p: string) => TEST_DIR.test(`/${p}`) || TEST_NAME.test(nameOf(p));
 
 const tests = changed.filter(isTest).length;
-const prod = changed.filter(p => !isTest(p) && SOURCE.test(p));
+const prod = changed.filter(p => !isTest(p) && SOURCE.test(p) && !MANIFEST.test(nameOf(p)));
 
 if (prod.length && !tests) {
   die(1, [`tdd: production source changed against ${base} with no test change:`, ...prod.map(p => `  ${p}`)].join("\n"));

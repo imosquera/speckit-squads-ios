@@ -6,7 +6,7 @@ preset:
   version: "1.0.0"
   description: "Adds a minimum-diff mandate to the spec phase: re-derive the issue's file paths and preconditions against main, specify the smallest change that satisfies the requirements, and record the result in two mandatory sections — `## Corrections to the issue as filed` and a machine-checkable `## Scope discipline`. A post-flight check asserts both exist; the /speckit-plan layer then refuses a plan that touches a path the spec put out of scope. Sibling to spec-minimal, which makes the spec shorter; this one makes the change smaller. See presets/diff-minimal/README.md."
   author: "imosquera"
-  repository: "https://github.com/imosquera/speckit-squads"
+  repository: "https://github.com/imosquera/speckit-squads-ios"
   license: "MIT"
 
 requires:

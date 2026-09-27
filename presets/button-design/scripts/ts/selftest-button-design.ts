@@ -39,15 +39,17 @@ function check(name: string, want: number, mode: "spec" | "plan", spec: string, 
 
 const HEAD = `## Actions & Buttons
 
-| Screen | Label | Kind | Role | Safeguard |
-|---|---|---|---|---|`;
+| Screen | Label | Control | Style | Role | Placement | Safeguard |
+|---|---|---|---|---|---|---|`;
 
 const GOOD = `${HEAD}
-| Export | Download Report | button | primary | — |
-| Export | Cancel | button | secondary | — |
-| Settings | Save Changes | button | primary | — |
-| Settings | Delete Account | button | secondary | type-to-confirm |
-| Settings | Privacy policy | link | — | — |
+| Export sheet | Export Report | Button | automatic | — | toolbar .confirmationAction | — |
+| Export sheet | Cancel | Button | automatic | cancel | toolbar .cancellationAction | — |
+| Settings | Save Changes | Button | \`.borderedProminent\` | — | bottom bar | — |
+| Settings | Delete Account | Button | .bordered | role: .destructive | inline | confirmationDialog |
+| Settings | Privacy Policy | Link | — | — | inline | — |
+| Settings | Notifications | NavigationLink | — | — | list row | — |
+| Inbox | Delete Message | Button | automatic | destructive | swipe action | undo |
 
 ## Functional Requirements`;
 
@@ -55,48 +57,62 @@ const NONE = `## Actions & Buttons
 
 None — no user-facing UI.`;
 
+const row = (r: string) => `${HEAD}\n${r}`;
+
 // --- spec mode
 check("spec-good", 0, "spec", GOOD);
 check("spec-none", 0, "spec", NONE);
-check("spec-toolbar-no-primary", 0, "spec", `${HEAD}\n| Toolbar | Bold | button | tertiary | — |`);
+check("spec-toolbar-no-primary", 0, "spec", row("| Editor | Bold | Button | plain | — | toolbar .primaryAction | — |"));
+check("spec-alert-safeguard", 0, "spec", row("| Files | Remove File | Button | bordered | destructive | inline | alert |"));
 check("spec-missing", 1, "spec", "## User Scenarios");
 check("spec-no-table", 1, "spec", "## Actions & Buttons\n\nSome prose about buttons.");
-check("spec-missing-column", 1, "spec", `## Actions & Buttons
+check("spec-web-columns", 1, "spec", `## Actions & Buttons
 
-| Screen | Label | Kind |
-|---|---|---|
-| Export | Download Report | button |`);
-check("spec-two-primaries", 1, "spec", `${HEAD}
-| Export | Download Report | button | primary | — |
-| Export | Email Report | button | primary | — |`);
-check("spec-generic-label", 1, "spec", `${HEAD}\n| Export | Submit | button | primary | — |`);
-check("spec-generic-link", 1, "spec", `${HEAD}\n| Home | Click here | link | — | — |`);
-check("spec-long-label", 1, "spec", `${HEAD}\n| Export | Download The Quarterly Report | button | primary | — |`);
-check("spec-bare-delete", 1, "spec", `${HEAD}\n| Files | Delete | button | secondary | confirm dialog |`);
-check("spec-unguarded-delete", 1, "spec", `${HEAD}\n| Files | Delete File | button | secondary | — |`);
-check("spec-unguarded-cancel", 1, "spec", `${HEAD}\n| Billing | Cancel Subscription | button | primary | — |`);
-check("spec-link-with-role", 1, "spec", `${HEAD}\n| Home | Pricing | link | primary | — |`);
-check("spec-bad-kind", 1, "spec", `${HEAD}\n| Home | Pricing | chip | — | — |`);
+| Screen | Label | Kind | Role | Safeguard |
+|---|---|---|---|---|
+| Export | Download Report | button | primary | — |`);
+check("spec-two-prominent", 1, "spec", `${HEAD}
+| Export | Download Report | Button | borderedProminent | — | inline | — |
+| Export | Email Report | Button | borderedProminent | — | inline | — |`);
+check("spec-generic-label", 1, "spec", row("| Export | Submit | Button | borderedProminent | — | inline | — |"));
+check("spec-generic-link", 1, "spec", row("| Home | Click here | Link | — | — | inline | — |"));
+check("spec-long-label", 1, "spec", row("| Export | Download The Quarterly Report | Button | borderedProminent | — | inline | — |"));
+check("spec-bare-delete", 1, "spec", row("| Files | Delete | Button | bordered | destructive | inline | confirmationDialog |"));
+check("spec-unguarded-delete", 1, "spec", row("| Files | Delete File | Button | bordered | destructive | inline | — |"));
+check("spec-delete-no-role", 1, "spec", row("| Files | Delete File | Button | bordered | — | inline | confirmationDialog |"));
+check("spec-unguarded-cancel", 1, "spec", row("| Billing | Cancel Subscription | Button | bordered | destructive | inline | — |"));
+check("spec-link-with-role", 1, "spec", row("| Home | Pricing | NavigationLink | — | destructive | inline | — |"));
+check("spec-link-prominent", 1, "spec", row("| Home | Pricing | NavigationLink | borderedProminent | — | inline | — |"));
+check("spec-bad-control", 1, "spec", row("| Home | Pricing | chip | — | — | inline | — |"));
+check("spec-bad-style", 1, "spec", row("| Home | Save Draft | Button | outlined | — | inline | — |"));
+check("spec-bad-role", 1, "spec", row("| Home | Save Draft | Button | bordered | primary | inline | — |"));
+check("spec-no-placement", 1, "spec", row("| Home | Save Draft | Button | bordered | — | — | — |"));
+check("spec-cancel-in-confirm", 1, "spec", row("| Sheet | Cancel | Button | automatic | cancel | toolbar .confirmationAction | — |"));
+check("spec-destructive-in-cancel", 1, "spec", row("| Sheet | Discard Draft | Button | automatic | destructive | toolbar .cancellationAction | confirmationDialog |"));
 
 // --- plan mode
 const PLAN_GOOD = `## Button System
 
-**Component:** reuse \`Button\` from \`src/ui/Button.tsx\`.
-**Color roles:**
-- **Primary:** brand color
-- **Destructive:** danger red
-**States:** default, hover, focus-visible, disabled, loading; 4.5:1 text contrast.
-**Touch targets:** 44×44 minimum; 8px gaps.
-**Placement:** primary at the end of the form.`;
+**Component:** reuse \`PrimaryButtonStyle\` from \`Sources/DesignSystem/Buttons.swift\`.
+**Styles & tint:**
+- **Primary:** \`.borderedProminent\` with the app \`.tint\`
+- **Destructive:** \`role: .destructive\`, system red
+**States & feedback:** pressed via \`configuration.isPressed\`, \`.disabled\`, loading ProgressView; \`.sensoryFeedback(.success, trigger:)\` on save.
+**Hit targets:** 44×44pt minimum via \`.frame(minWidth: 44, minHeight: 44)\` and \`.contentShape(Rectangle())\`.
+**Accessibility:** labels scale with Dynamic Type up to AX5; icon-only buttons get \`.accessibilityLabel\`.
+**Placement:** Save in the bottom bar within thumb reach; Cancel in \`.cancellationAction\`.`;
 const PLAN_NO_PLACEMENT = PLAN_GOOD.slice(0, PLAN_GOOD.lastIndexOf("**Placement:**"));
 
 check("plan-good", 0, "plan", GOOD, PLAN_GOOD);
+check("plan-hover-note", 0, "plan", GOOD, PLAN_GOOD.replace("pressed via", "hover (iPad pointer), pressed via"));
 check("plan-spec-none", 0, "plan", NONE, "");
 check("plan-spec-legacy", 0, "plan", "## User Scenarios", "");
 check("plan-missing-section", 1, "plan", GOOD, "## Summary");
 check("plan-missing-marker", 1, "plan", GOOD, PLAN_NO_PLACEMENT);
 check("plan-empty-marker", 1, "plan", GOOD, `${PLAN_NO_PLACEMENT}**Placement:**`);
-check("plan-small-target", 1, "plan", GOOD, PLAN_GOOD.replace("44×44", "32x32"));
+check("plan-small-target", 1, "plan", GOOD, PLAN_GOOD.replace("44×44pt", "32x32pt"));
+check("plan-no-dynamic-type", 1, "plan", GOOD, PLAN_GOOD.replace("Dynamic Type", "the system font"));
+check("plan-web-markers", 1, "plan", GOOD, PLAN_GOOD.replace("**Hit targets:**", "**Touch targets:**"));
 
 // --- usage
 if (run().rc === 2) console.log("PASS: usage-no-args");

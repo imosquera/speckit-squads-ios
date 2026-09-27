@@ -6,7 +6,7 @@ preset:
   version: "1.0.0"
   description: "Applies the ponytail ladder (YAGNI, reuse, stdlib, native platform, installed dependency, one line, minimum new code) at the plan phase, where new files, abstractions, dependencies and config knobs get committed to. Every such item plan.md proposes is climbed, cut or rewritten in place when a lower rung holds, and recorded in a mandatory `## Ladder` table; a new dependency needs a `**Dependency justification:**` line. check-ladder.ts is the deterministic gate. Works without the ponytail plugin installed. See presets/ponytail-plan/README.md."
   author: "imosquera"
-  repository: "https://github.com/imosquera/speckit-squads"
+  repository: "https://github.com/imosquera/speckit-squads-ios"
   license: "MIT"
 
 requires:

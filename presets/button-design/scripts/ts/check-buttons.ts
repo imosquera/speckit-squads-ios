@@ -4,13 +4,21 @@
 // Read-only: never edits a file.
 //
 //   spec <spec.md>       `## Actions & Buttons` exists and is either `None.` or a
-//                        table where: kind is button|link; links take no role;
-//                        each screen has at most one primary; button labels are
-//                        1–3 words and not generic; destructive labels name
-//                        their object and carry a confirm/type/undo safeguard.
+//                        SwiftUI action table where: control is Button |
+//                        NavigationLink | Link; a Button has a style
+//                        (borderedProminent|bordered|borderless|plain|automatic);
+//                        role is — | destructive | cancel, and links take none;
+//                        each screen has at most one `.borderedProminent`;
+//                        placement is filled in, and toolbar confirmation /
+//                        cancellation slots don't hold the wrong role; labels
+//                        are 1–3 words and not generic; destructive actions use
+//                        `role: .destructive`, name their object, and carry a
+//                        confirmationDialog/alert/undo/type-to-confirm safeguard.
 //   plan <feature-dir>   when the spec declares actions, plan.md has a
-//                        `## Button System` with all five markers populated and
-//                        no touch target under 44×44.
+//                        `## Button System` with all six markers populated, no
+//                        hit target under 44×44pt, and Accessibility covering
+//                        Dynamic Type. A `hover` state is a note (iPad pointer
+//                        only), never a failure.
 //
 // Prose rules (jargon, "match the moment", placement quality) stay in the
 // command prompts. A checker that guesses at those cries wolf, and one that
@@ -30,7 +38,9 @@ const WORD_END = "(?![\\p{L}\\p{N}_])";
 
 const SPEC_TITLE = "Actions & Buttons";
 const PLAN_TITLE = "Button System";
-const PLAN_MARKERS: readonly string[] = ["Component", "Color roles", "States", "Touch targets", "Placement"];
+const PLAN_MARKERS: readonly string[] = [
+  "Component", "Styles & tint", "States & feedback", "Hit targets", "Accessibility", "Placement",
+];
 const GENERIC: ReadonlySet<string> = new Set([
   "ok", "okay", "yes", "no", "submit", "confirm", "click", "click here", "here", "go", "press",
 ]);
@@ -39,7 +49,16 @@ const GENERIC: ReadonlySet<string> = new Set([
 const DESTRUCTIVE: ReadonlySet<string> = new Set([
   "delete", "remove", "erase", "destroy", "discard", "revoke", "purge", "wipe", "terminate",
 ]);
-const SAFEGUARD = /confirm|undo|type/iu;
+const SAFEGUARD = /confirm|alert|undo|type/iu;
+const CONTROLS: ReadonlySet<string> = new Set(["button", "navigationlink", "link"]);
+const LINKS: ReadonlySet<string> = new Set(["navigationlink", "link"]);
+const STYLES: ReadonlySet<string> = new Set(["borderedprominent", "bordered", "borderless", "plain", "automatic"]);
+const PROMINENT = "borderedprominent";
+const ROLES: ReadonlySet<string> = new Set(["destructive", "cancel"]);
+const DYNAMIC_TYPE = /dynamic[\s-]*type/iu;
+const HOVER = /hover/iu;
+// Placements where the system, not `.borderedProminent`, carries the emphasis.
+const SYSTEM_SLOT = /toolbar|action|dialog|alert|swipe|context|menu/iu;
 const TARGET_SIZE = new RegExp(`(\\p{Nd}+)[${WS}]*(?:px|pt|dp)?[${WS}]*[x×][${WS}]*(\\p{Nd}+)`, "gu");
 const MIN_TARGET = 44;
 const DASH: ReadonlySet<string> = new Set(["", "-", "—", "–", "n/a"]);
@@ -53,12 +72,13 @@ const SPEC_SHAPE = `  Expected shape (or \`None — no user-facing UI.\` under t
 
     ## Actions & Buttons
 
-    | Screen | Label | Kind | Role | Safeguard |
-    |---|---|---|---|---|
-    | Export dialog | Download Report | button | primary | — |
-    | Export dialog | Cancel | button | secondary | — |
-    | Settings | Delete Account | button | secondary | type-to-confirm |
-    | Settings | Privacy policy | link | — | — |`;
+    | Screen | Label | Control | Style | Role | Placement | Safeguard |
+    |---|---|---|---|---|---|---|
+    | Export sheet | Export | Button | automatic | — | toolbar .confirmationAction | — |
+    | Export sheet | Cancel | Button | automatic | cancel | toolbar .cancellationAction | — |
+    | Settings | Save Changes | Button | borderedProminent | — | bottom bar | — |
+    | Settings | Delete Account | Button | bordered | destructive | inline | confirmationDialog |
+    | Settings | Privacy Policy | Link | — | — | inline | — |`;
 
 const PLAN_SHAPE =
   "  Expected markers, each populated:\n" + PLAN_MARKERS.map((m) => `    **${m}:** ...`).join("\n");
@@ -171,7 +191,7 @@ function table(body: readonly string[]): readonly [string[] | null, string[][]] 
   return [head.map((h) => h.toLowerCase()), data];
 }
 
-const COLUMNS = ["screen", "label", "kind", "role", "safeguard"] as const;
+const COLUMNS = ["screen", "label", "control", "style", "role", "placement", "safeguard"] as const;
 type Column = (typeof COLUMNS)[number];
 
 function checkSpec(spec: string): Result {
@@ -197,6 +217,9 @@ function checkSpec(spec: string): Result {
   const notes: string[] = [];
   const primaries = new Map<string, number>();
   const buttonScreens: string[] = [];
+  // `.borderedProminent` / `role: .destructive` / `Button` all normalise to a
+  // bare lowercase word, so authors can write the SwiftUI spelling or not.
+  const norm = (v: string): string => strip(strip(v, "`"), ".").toLowerCase();
   rows.forEach((r, k) => {
     const n = k + 1;
     const get = (w: Column): string => {
@@ -205,52 +228,76 @@ function checkSpec(spec: string): Result {
     };
     const screen = get("screen");
     const label = strip(get("label"), "`*\"' ");
-    const kind = strip(get("kind"), "`").toLowerCase();
-    const role = strip(get("role"), "`").toLowerCase();
+    const control = norm(get("control"));
+    const style = norm(get("style"));
+    const roleRaw = norm(get("role")).replace(/^role:[\s.]*/u, "");
+    const role = DASH.has(roleRaw) ? "" : roleRaw;
+    const placement = get("placement");
     const words = splitWords(label);
     const where = `row ${n} (${screen || "?"} / ${label || "?"})`;
 
-    if (kind !== "button" && kind !== "link") {
-      problems.push(`${where}: kind must be \`button\` or \`link\`, got \`${kind}\``);
+    if (!CONTROLS.has(control)) {
+      problems.push(`${where}: control must be \`Button\`, \`NavigationLink\`, or \`Link\`, got \`${get("control")}\``);
       return;
     }
     if (GENERIC.has(rstrip(label.toLowerCase(), ".!"))) {
-      problems.push(`${where}: generic label; say what happens next (\`Download Report\`, not \`Submit\`)`);
+      problems.push(`${where}: generic label; say what happens next (\`Export Report\`, not \`OK\`)`);
     }
-    if (kind === "link") {
-      if (!DASH.has(role)) {
-        problems.push(`${where}: links navigate and take no button role; use \`—\`, or make it a button`);
+    if (DASH.has(placement.toLowerCase())) {
+      problems.push(`${where}: placement is empty; name the toolbar slot (\`.primaryAction\`, \`.confirmationAction\`, \`.cancellationAction\`), \`bottom bar\`, \`inline\`, \`dialog\`, or \`swipe action\``);
+    }
+    if (LINKS.has(control)) {
+      if (role !== "") {
+        problems.push(`${where}: links navigate and take no button role; use \`—\`, or make it a \`Button\``);
+      }
+      if (style === PROMINENT) {
+        problems.push(`${where}: \`.borderedProminent\` marks the screen's one primary action; a link navigates, make it a \`Button\` or restyle it`);
       }
       return;
     }
-    if (role !== "primary" && role !== "secondary" && role !== "tertiary") {
-      problems.push(`${where}: button role must be primary|secondary|tertiary, got \`${role}\``);
+    if (!STYLES.has(style)) {
+      problems.push(`${where}: Button style must be borderedProminent|bordered|borderless|plain|automatic, got \`${get("style")}\``);
       return;
     }
-    buttonScreens.push(screen);
-    if (role === "primary") primaries.set(screen, (primaries.get(screen) ?? 0) + 1);
+    if (role !== "" && !ROLES.has(role)) {
+      problems.push(`${where}: role must be \`—\`, \`destructive\`, or \`cancel\`, got \`${get("role")}\``);
+      return;
+    }
+    if (!SYSTEM_SLOT.test(placement)) buttonScreens.push(screen);
+    if (style === PROMINENT) primaries.set(screen, (primaries.get(screen) ?? 0) + 1);
     if (!(words.length >= 1 && words.length <= 3)) {
       problems.push(`${where}: button labels are 1–3 words, got ${words.length}`);
     }
+    const slot = placement.toLowerCase();
+    if (slot.includes("confirmationaction") && role !== "") {
+      problems.push(`${where}: \`.confirmationAction\` holds the affirmative step; a \`${role}\` role belongs elsewhere`);
+    }
+    if (slot.includes("cancellationaction") && role === "destructive") {
+      problems.push(`${where}: \`.cancellationAction\` dismisses without side effects; move the destructive action out of it`);
+    }
     const verb = (words[0] ?? "").toLowerCase();
-    if (DESTRUCTIVE.has(verb) || (verb === "cancel" && words.length > 1)) {
+    const destructiveLabel = DESTRUCTIVE.has(verb) || (verb === "cancel" && words.length > 1);
+    if (destructiveLabel && role !== "destructive") {
+      problems.push(`${where}: destructive label needs \`role: .destructive\` (system red, VoiceOver announces it)`);
+    }
+    if (destructiveLabel || role === "destructive") {
       if (words.length < 2) {
         problems.push(`${where}: destructive label must name what it destroys (\`Delete Account\`, not \`Delete\`)`);
       }
       if (!SAFEGUARD.test(get("safeguard"))) {
-        problems.push(`${where}: destructive action needs a safeguard: \`confirm dialog\`, \`type-to-confirm\`, or \`undo\``);
+        problems.push(`${where}: destructive action needs a safeguard: \`confirmationDialog\`, \`alert\`, \`type-to-confirm\`, or \`undo\` (e.g. swipe-to-delete + undo)`);
       }
     }
   });
 
   for (const [screen, count] of primaries) {
     if (count > 1) {
-      problems.push(`screen \`${screen}\`: ${count} primary buttons; exactly one action is the next step, demote the rest to secondary`);
+      problems.push(`screen \`${screen}\`: ${count} \`.borderedProminent\` buttons; exactly one action is the next step, demote the rest to \`.bordered\` or \`.borderless\``);
     }
   }
   for (const screen of new Set(buttonScreens)) {
     if (!primaries.has(screen)) {
-      notes.push(`screen \`${screen}\` has buttons but no primary; fine for a toolbar, suspicious for a task`);
+      notes.push(`screen \`${screen}\` has in-content buttons but no \`.borderedProminent\`; fine for a secondary panel, suspicious for a task`);
     }
   }
   return [problems, notes];
@@ -264,8 +311,8 @@ function marker(body: readonly string[], name: string): string | null {
       const parts = [m[2] ?? ""];
       for (const nxt of body.slice(i + 1)) {
         const nm = MARKER.exec(nxt);
-        // Only the five plan markers end a block; a nested `**Primary:**`
-        // bullet under Color roles is content, not a boundary.
+        // Only the six plan markers end a block; a nested `**Primary:**`
+        // bullet under Styles & tint is content, not a boundary.
         if ((nm && PLAN_MARKERS.includes(strip(nm[1] ?? ""))) || ANY_HEADING.test(nxt)) break;
         parts.push(nxt);
       }
@@ -285,21 +332,26 @@ function checkPlan(fdir: string): Result {
   const plan = section(readLines(join(fdir, "plan.md")), PLAN_TITLE);
   if (plan === null) return [[`missing section in plan.md: \`## ${PLAN_TITLE}\`\n${PLAN_SHAPE}`], []];
   const problems: string[] = [];
+  const notes: string[] = [];
   for (const name of PLAN_MARKERS) {
     const content = marker(plan, name);
     if (content === null) problems.push(`\`## ${PLAN_TITLE}\` lacks \`**${name}:**\``);
     else if (strip(content) === "") problems.push(`\`**${name}:**\` is empty`);
-    else if (name === "Touch targets") {
+    else if (name === "Accessibility" && !DYNAMIC_TYPE.test(content)) {
+      problems.push("`**Accessibility:**` must say how buttons scale with Dynamic Type");
+    } else if (name === "States & feedback" && HOVER.test(content)) {
+      notes.push("`**States & feedback:**` mentions hover; iPhone has no hover, keep it only for iPad pointer support");
+    } else if (name === "Hit targets") {
       for (const m of content.matchAll(TARGET_SIZE)) {
         const a = m[1] ?? "";
         const b = m[2] ?? "";
         if (Math.min(digitsValue(a), digitsValue(b)) < MIN_TARGET) {
-          problems.push(`touch target ${a}×${b} is under ${MIN_TARGET}×${MIN_TARGET}`);
+          problems.push(`hit target ${a}×${b} is under ${MIN_TARGET}×${MIN_TARGET}pt`);
         }
       }
     }
   }
-  return [problems, []];
+  return [problems, notes];
 }
 
 const mode = process.argv[2] ?? "";

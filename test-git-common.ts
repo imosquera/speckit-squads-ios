@@ -91,13 +91,13 @@ try {
   const t = repo();
   mkdirSync(`${t}/.specify`);
   writeFileSync(`${t}/.specify/feature.json`, '{"source_issue":5}\n');
-  writeFileSync(`${t}/.gitignore`, "node_modules"); // no trailing newline
+  writeFileSync(`${t}/.gitignore`, "DerivedData/"); // no trailing newline
   sh(t, "git", "add", "-A");
   sh(t, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "tracked");
   quiet(() => gc.writeFeatureDirectory(t, "specs/042-demo"));
   check("inherited issue dropped", gc.featureSourceIssue(t) === "");
   check("untracked", sh(t, "git", "ls-files", ".specify/feature.json") === "");
-  check("gitignore newline fixed", readFileSync(`${t}/.gitignore`, "utf8").startsWith("node_modules\n# Per-worktree"));
+  check("gitignore newline fixed", readFileSync(`${t}/.gitignore`, "utf8").startsWith("DerivedData/\n# Per-worktree"));
 
   // resolveFeature
   const f = repo("feat/042-demo");
@@ -119,9 +119,35 @@ try {
   mkdirSync(`${f}/.specify/extensions/git`, { recursive: true });
   writeFileSync(
     `${f}/.specify/extensions/git/git-config.yml`,
-    "auto_commit:\n  default: false\ncommit_exclude:\n  - graphify-out/   # generated\n  - \"dist/\"\n  - 'a b'\n# comment\nother: 1\n  - not-this\n",
+    "auto_commit:\n  default: false\ncommit_exclude:\n  - graphify-out/   # generated\n  - \"Generated/\"\n  - 'a b'\n# comment\nother: 1\n  - not-this\n",
   );
-  check("excludes", JSON.stringify(gc.commitExcludes(f)) === '["graphify-out/","dist/","a b"]');
+  check("excludes", JSON.stringify(gc.commitExcludes(f)) === '["graphify-out/","Generated/","a b"]');
+
+  // Xcode build output / per-user state
+  const root = gc.xcodeArtifactRoot;
+  check("artifact DerivedData", root("DerivedData/App/x.o") === "DerivedData");
+  check("artifact nested build", root("App/build/Release/App.app") === "App/build");
+  check("artifact xcuserdata", root("App.xcodeproj/xcuserdata/me.xcuserdatad/x.plist") === "App.xcodeproj/xcuserdata");
+  check("artifact swiftpm xcuserdata", root(".swiftpm/xcode/xcuserdata/me.xcuserdatad/x.plist") === ".swiftpm/xcode/xcuserdata");
+  check("artifact xcresult", root("Results/Run 1.xcresult/Info.plist") === "Results/Run 1.xcresult");
+  check("artifact xcuserstate", root("UserInterfaceState.xcuserstate") === "UserInterfaceState.xcuserstate");
+  check("artifact Pods", root("Pods/Alamofire/Source/AF.swift") === "Pods");
+  check("not artifact source", root("Sources/App/BuildInfo.swift") === null);
+  check("not artifact project", root("App.xcodeproj/project.pbxproj") === null);
+  const x = repo();
+  writeFileSync(`${x}/.gitignore`, "*.log"); // no trailing newline
+  gc.ignoreXcodeArtifacts(x);
+  const xi = readFileSync(`${x}/.gitignore`, "utf8");
+  check("xcode gitignore", gc.XCODE_ARTIFACTS.every((pat) => xi.split("\n").includes(pat)) && xi.startsWith("*.log\n# Xcode"));
+  gc.ignoreXcodeArtifacts(x);
+  check("xcode gitignore idempotent", readFileSync(`${x}/.gitignore`, "utf8") === xi);
+  mkdirSync(`${x}/DerivedData/App`, { recursive: true });
+  writeFileSync(`${x}/DerivedData/App/x.o`, "o");
+  writeFileSync(`${x}/.gitignore`, ""); // pending detection must not lean on .gitignore
+  mkdirSync(`${x}/App.xcodeproj/xcuserdata`, { recursive: true });
+  writeFileSync(`${x}/App.xcodeproj/xcuserdata/a.plist`, "p");
+  writeFileSync(`${x}/App.xcodeproj/project.pbxproj`, "p");
+  check("pending artifacts", JSON.stringify(gc.pendingXcodeArtifacts(x)) === '["App.xcodeproj/xcuserdata","DerivedData"]');
 
   // initialize-repo.ts in a fresh project
   const p = mkdtempSync(join(tmpdir(), "git-common-init-"));
@@ -137,6 +163,7 @@ try {
   check("init stderr", r1.stderr.toString() === "✓ Git repository initialized\n" && r1.stdout.toString() === "");
   check("init commit msg", sh(p, "git", "log", "-1", "--format=%s") === "hello init");
   check("init gitignore", readFileSync(`${p}/.gitignore`, "utf8").includes(".specify/feature.json"));
+  check("init gitignore xcode", readFileSync(`${p}/.gitignore`, "utf8").split("\n").includes("DerivedData/"));
   const r2 = run();
   check("init rerun skips", r2.exitCode === 0 && r2.stderr.toString() === "[specify] Git repository already initialized; skipping\n");
 } finally {

@@ -1,6 +1,8 @@
-# speckit-squads — agent guide
+# speckit-squads-ios — agent guide
 
-This repo is the source of truth for a personal set of Spec Kit extensions and presets. Consumer projects (e.g. `~/Code/beadbits`) install from here via `specify ... add --dev`.
+This repo is the source of truth for a personal set of Spec Kit extensions and presets targeting **iOS/Swift app projects**. It is a fork of `speckit-squads` (`~/Code/speckit-squads`) with only a subset of items ported, and the code-touching ones adapted to Swift, SwiftUI, Xcode and SPM/CocoaPods. Consumer iOS projects install from here via `./install.ts <project>` (`specify ... add --dev` underneath).
+
+**Only the target is Swift; the tooling is not.** Every helper script this repo ships — installers, checkers, gates, hooks, scanners — stays TypeScript run by bun, even when what it inspects, tests or builds is Swift. Never add a Swift (or shell/Python) helper script to an item; shell out to `xcodebuild`/`swift`/`pod` from TypeScript instead.
 
 ## Layout
 
@@ -54,13 +56,11 @@ this repo owns.
 TypeScript 7 (the native compiler) via `bun run typecheck` against the root
 `package.json`/`tsconfig.json`. Run `bun install` once per checkout;
 `check-cli-usage.ts` runs the typecheck as part of install pre-flight when bun
-and `node_modules` are present, and warns and skips otherwise. The
-`parse-dont-validate` scanner needs no `typescript` at all: it parses with
-`oxc-parser` pinned at 0.151.0, taken from the machine cache
-`~/.cache/speckit-squads/pdv` (filled by `bun add` on first use, never
-`.specify/`) or this checkout's own copy — never from the consumer (issue #115,
-superseding #113's TS 5.x workaround). Consumer-side package managers stay polyglot —
-`install-deps.ts` reads each consumer's lockfile and must keep doing so.
+and `node_modules` are present, and warns and skips otherwise. Nothing a
+script needs is ever resolved from the consumer's own dependencies (an iOS
+project has none bun could use): helpers come from a machine cache under
+`~/.cache/` (filled by `bun add` on first use, never `.specify/`) or this
+checkout's own copy (issue #115).
 
 **There is no Python and no bash.** Every script this repo ships is TypeScript
 under an item's `scripts/ts/` (or `hooks/`, the repo root, or the root `scripts/`),
@@ -68,14 +68,11 @@ started with `bun <path>.ts`. Command files call them that way, and frontmatter 
 the `sh:` key Spec Kit selects by name with a `bun scripts/ts/<name>.ts` value.
 `check-cli-usage.ts` fails on any reference to a `scripts/bash/*.sh` of ours; core
 Spec Kit's own `scripts/bash/` stays allowed. Bun is therefore required wherever these
-items run — `install.ts` refuses to start without it. The bash port kept each
-script's CLI, output and exit codes, proved by running the old bash tests against the
-new scripts; the few intended differences are listed in its PR. The Python ports were held byte-for-byte to the Python they
-replaced (side-by-side diffs, every `--selftest` carried over), which is why a few
-helpers — autopilot's `py.ts`, diff-minimal's `scope-common.ts` — reproduce
-Python's whitespace, JSON and `repr` rules. The PDV driver scans Python *source*
-with its own tokenizer now, not `ast`: identical on a 2,300-finding corpus, but a
-file with an indentation-only syntax error is scanned rather than rejected.
+items run — `install.ts` refuses to start without it. Upstream's scripts were
+ported from bash and Python byte-for-byte, which is why a few helpers — autopilot's
+`py.ts`, diff-minimal's `scope-common.ts` — reproduce Python's whitespace, JSON and
+`repr` rules; keep them as they are. They are harness code keeping output identical
+to the originals, not target-language tooling.
 
 ## Install / uninstall
 
@@ -102,15 +99,15 @@ Every install uses `specify ... add --dev <repo-path>`. **`--dev` records this r
 
 Plain `./install.ts <project>` treats "already installed" as a no-op success, so it will **not** propagate edits. Use `--force` whenever you have changed anything here.
 
-Note on capabilities (verified empirically): **only extensions can declare `hooks:` and register brand-new standalone commands**; a `hooks:` block or a new command in a `preset.yml` is silently dropped by `specify`. **Only presets can `wrap`/`replaces` an existing command body**; extensions add new commands and hooks but never rewrite a core command. When a feature needs both (e.g. `progress-report` wraps cycle commands *and* needs `before_*` hooks), ship it as a preset + companion extension pair.
+Note on capabilities (verified empirically): **only extensions can declare `hooks:` and register brand-new standalone commands**; a `hooks:` block or a new command in a `preset.yml` is silently dropped by `specify`. **Only presets can `wrap`/`replaces` an existing command body**; extensions add new commands and hooks but never rewrite a core command. When a feature needs both (a command wrap *and* `before_*` hooks), ship it as a preset + companion extension pair.
 
 Note on composition (issue #25): a preset command template's `strategy` defaults
 to **`replace`** when omitted, and a `replace` layer kills every layer below it —
-that default silently disabled five `/speckit-implement` presets at once. Always
+that default silently disabled several `/speckit-implement` presets at once. Always
 declare `strategy:` explicitly. There is no `replaces:` key; it is not in the
 schema and is silently dropped. Presets are ordered by `(priority ASC, id ASC)`,
 lowest number outermost, and priority is an **install-time** argument, not a
-manifest field — so `install.ts`'s `preset_priority()` map is load-bearing
+manifest field — so `install.ts`'s `PRIORITY` map is load-bearing
 wherever more than one preset targets a command. The `/speckit-implement`
 ordering contract is tabulated in `README.md`; keep the two in sync.
 
@@ -176,7 +173,7 @@ on first run in a project that still tracks it, so the migration is automatic.
 
 **Extensions**
 - `archive` — archive a completed feature folder, close linked GitHub issues
-- `autopilot` — `/speckit-autopilot-run`: take the **highest-ranked** eligible open issue (or a given issue number) from backlog to a reviewed **draft PR** by driving the whole pipeline unattended (specify → clarify auto-answered → plan → tasks → implement → review), binding the worktree to the existing issue and posting progress comments at every stage.
+- `autopilot` — `/speckit-autopilot-run`: take the **highest-ranked** eligible open issue (or a given issue number) from backlog to a reviewed **draft PR** by driving the whole pipeline unattended (specify → clarify auto-answered → plan → tasks → implement → review), binding the worktree to the existing issue and posting progress comments at every stage. **iOS:** the build/test gates are `xcodebuild build`/`test` (or `swift build`/`test` for a package); `check-target-repo.ts --kind` prints `workspace|project|package`, and `sim-destination.ts` picks a booted iPhone, else an iPhone on the newest runtime (override with `SPECKIT_AUTOPILOT_SIM_DESTINATION`). Scheduled runs need full Xcode selected (`xcode-select`) and at least one iOS Simulator runtime.
   A hard, non-recoverable stop writes a durable `autopilot:blocked` label plus an
   `AUTOPILOT-BLOCKED:`-tagged comment, which `preflight-issues.ts` skips on and reads
   the reason back out of — without it, removing the transient `autopilot:claimed`
@@ -330,7 +327,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   gates left — and the moment the edit spreads past those bounds the run bails back
   to `/speckit-specify` and Steps 3–7.
   Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
-- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases.
+- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases. **iOS:** worktree dependencies resolve through SPM/CocoaPods/Carthage (see `install-deps.ts` below). Auto-commit always holds Xcode build output and per-user files out of its commits — `DerivedData/`, `build/`, `.build/`, `xcuserdata/`, `*.xcuserstate`, `.swiftpm/xcode/xcuserdata/`, `Pods/`, `*.xcresult` — even when `.gitignore` misses them. The list is `XCODE_ARTIFACTS` in `git-common.ts`, separate from `commit_exclude`, and it never deletes a file. Already-tracked paths are left alone, so a team that commits `Pods/` makes the first `Pods/` commit by hand. `initialize-repo.ts` writes the same list into a new repo's `.gitignore`.
   `/speckit-git-issue` also owns **triage labels**, the input side of autopilot's
   ranked picker: `label-issue.ts` is the single writer of `p0`..`p3`,
   `bug`/`feature` and `frontend`/`backend`/`integration`, plus the `mock-first`
@@ -433,26 +430,25 @@ on first run in a project that still tracks it, so the migration is automatic.
   `install-deps.ts` is its sibling on the same two creation sites (same
   best-effort contract, skippable with `SPECKIT_SKIP_INSTALL=1`): a linked
   worktree gets the tracked files and nothing else, so six autopilot runs in
-  three days each rediscovered the empty `node_modules` **mid-implement**,
-  through a `tsx: not found` after the code was already written (issue #51).
-  The install was never the cost — the interrupt and the diagnosis were.
+  three days each rediscovered the missing dependencies **mid-implement**,
+  after the code was already written (issue #51). The install was never the
+  cost — the interrupt and the diagnosis were. In an iOS project that means
+  CocoaPods (`Podfile.lock`), Carthage (`Cartfile.resolved`), a Swift package
+  (`Package.swift`) and an Xcode app's SwiftPM pins (`Package.resolved` inside
+  its `.xcodeproj`/`.xcworkspace`, always resolved when tracked, since
+  `xcodebuild` keys packages in DerivedData by checkout path); Mintfile and
+  Brewfile are machine-wide and left alone, and a missing tool is named and skipped.
+  The `xcodebuild -resolvePackageDependencies` flags are not yet verified against a
+  real Xcode.
   **The base checkout is the oracle, not a hard-coded list:** a directory is
   installed only when the same directory in the main worktree already carries
-  the ecosystem's installed marker (`node_modules/`, `.venv/`), which is what
-  makes one script right for a three-workspace monorepo *and* a silent no-op
-  for a docs repo without a config schema. Manifests come from `git ls-files`
-  (so vendored trees are never walked), the package manager is read off the
-  lockfile rather than assumed to be npm (`bun`/`pnpm`/`yarn`/`npm ci`, plus
-  `uv sync`/`poetry install`), the installs run concurrently, and every path
-  exits 0 — a worktree without dependencies is a worse worktree, a worktree
-  that failed to be created is no worktree at all.
-  **A workspace child is installed by its root, never on its own.** A pnpm/npm
-  workspace keeps one lockfile at the top, so a child package matched the
-  no-lockfile fallback and got `npm install` — running concurrently with the
-  root's `pnpm install`, writing a `package-lock.json` into a tree pnpm was
-  mid-install on. Each node manifest now resolves to the nearest ancestor
-  carrying a lockfile and the plan is deduplicated by that directory. The base
-  checkout's path is likewise read whole out of `git worktree list --porcelain`
+  the ecosystem's installed marker (`Pods/`, `Carthage/Build/`, `.build/`), which is what makes one
+  script right for a multi-package repo *and* a silent no-op for a repo with
+  nothing to resolve. Manifests come from `git ls-files` (so vendored trees are
+  never walked), the installs run concurrently, and every path exits 0 — a
+  worktree without dependencies is a worse worktree, a worktree that failed to
+  be created is no worktree at all. The base
+  checkout's path is read whole out of `git worktree list --porcelain`
   rather than as an awk field: split on the space, `~/My Code/repo` resolved to
   `~/My` and every install was silently skipped for that repo.
   `./test-worktree-deps.ts` is the check.
@@ -488,8 +484,13 @@ on first run in a project that still tracks it, so the migration is automatic.
   silently skips on those turns exactly the unverifiable cases into an unverified
   delete. `./test-verify-landed.ts` is the check.
   `create-new-feature.ts --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes the `source_issue` linkage into `.specify/feature.json` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). Every PR it opens is titled `#N: <spec H1>` — a prefix, never a trailing `(#N)`, since GitHub appends `(#<pr>)` itself on a squash merge and a title with both reads as two PR numbers; the squash commit subject uses the same string. It also inherits the tracking issue's **labels** (`pr_copy_labels`, default on) and carries an **agent-session footer** (`pr_session_footer`, default on) — the `claude --resume` id, the git author, and the claude.ai link. Both are read by `create-pr.ts` from `gh`, `git config`, and `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_BRIDGE_SESSION_ID` in the environment — **never passed in from the agent prompt**, because a model reporting its own session id hallucinates it and a wrong resume id is worse than none. Labels go on with `gh pr edit` *after* the PR exists, not `gh pr create --label`, which fails the whole create on one unknown label; `autopilot:*` is filtered out as run-state. `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`), and **`scrub-commit-exclude.ts` is the single handler for them** — it unstages those paths, restores tracked edits to HEAD, drops untracked output, and reports every line it discarded. The untracked list is re-read **after** the unstage, never before: `git restore --staged` turns a staged *addition* into an untracked file, so the one reading taken up front is stale in exactly the case this exists for — a freshly generated dated snapshot swept up by the flow's own `git add -A` — and the scrub reported success while leaving `?? graphify-out/` for the next `git add` to commit. `create-pr.ts` and `clean.ts` call it, since those are where stray output could reach a branch (issue #62). `auto-commit.ts` does **not**: scrubbing at every phase boundary discarded each graph rebuild before the next phase could use it; it only holds the paths out of its commit with a `:(exclude)` pathspec and unstages any already staged (issue #109). One handler also replaces the six improvisations each phase had for a background graph rebuild dirtying the tree on its own, which blocked the squash, the pull, and the cleanup step in three different ways; a rebuild **in flight** is waited for on a bounded timeout rather than raced, and `--require-clean` exits 2 when anything outside the excluded paths is dirty, since that is real work and the caller should still refuse (issue #55). `create-pr.ts` additionally resets them to the base before opening the PR: the working tree is the handler's job, but a divergence already **committed** on the branch is invisible to it. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. `./test-commit-exclude.ts` is the check. The extension ships **one implementation only** (see *No PowerShell* above) — the twin was deleted rather than taught the same rules, since a second copy of a handler whose whole point is being the single one is a second place for it to drift. Empty by default (issue #22)
-- `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.ts` and no-ops if absent. Install alongside the preset.
-- `review` — multi-agent code review, **one engine for every scope**: `/speckit-review-run`
+- `review` — multi-agent code review, **one engine for every scope** (**iOS, 2.2.0:** Swift
+  review checklists, accessibility folded into the code agent; `detect-changed-files.ts`
+  moves Xcode churn — `*.pbxproj`, `*.xcassets/`, `xcuserdata/`, `*.xcworkspace/`,
+  `__Snapshots__/`, `.DS_Store` — into an `ignored_files` key, while `Package.swift`/
+  `Package.resolved`, `Info.plist`, entitlements and `.xcconfig` stay in `changed_files`;
+  a changed `.pbxproj` is grepped by the coordinator for build-setting changes rather
+  than reviewed; the cut-applying step's gates are `xcodebuild`/`swift test`/`swiftlint`): `/speckit-review-run`
   reviews the feature branch (Mode A), the working directory (Mode B), or a GitHub PR
   (`--pr N`, Mode C) with the same agents (code — incl. security/performance — arch,
   comments, tests, errors, types, simplify). `/speckit-review-pr` was deleted in 2.0.0:
@@ -514,8 +515,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   reviewers), snapshots files first and restores from the snapshot rather than git
   (Modes A/B hold uncommitted work), reverts any cut that breaks a gate that passed at
   baseline, and reports `net: -N lines`. Never in Mode C `checkout: none`; `--no-fix`
-  opts out. `progress-report`'s `SUBSTEPS` carries `arch`; keep it in sync with the
-  aspect list, since an unknown substep key is a hard exit there.
+  opts out.
   **The coordinator hands each reviewer its scope; it never lets one infer it.** A
   subagent inherits the session cwd — regularly the main checkout on `main`, not the
   feature worktree — so a reviewer once produced confident findings about an unrelated
@@ -542,7 +542,6 @@ on first run in a project that still tracks it, so the migration is automatic.
 **Presets**
 - `claude-ask-questions` — interactive clarify/checklist for Claude
 - `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
-- `functional-constitution` — `/speckit-constitution` **wrapper** that injects and normalizes a mandatory functional-programming governance section. Stacks with `parse-dont-validate`'s constitution layer: both match their section by title (not roman numeral) and renumber all principle sections sequentially, so neither clobbers the other (issue #37)
 - `spec-minimal` — one job: artifact minimalism. Wraps `/speckit-specify` to strip `## Assumptions`, `### Key Entities`, and `## Success Criteria` from `spec.md`; wraps `/speckit-plan` to hold the feature tree to `spec.md`, `plan.md`, `tasks.md`, `checklists/`, and optional `quickstart.md`/`research.md` — only `data-model.md` and `contracts/` are forbidden. `checklists/requirements.md` is written by core's own `/speckit-specify` and `research.md` by the stacked `library-research` preset, so forbidding either made the enforcer delete a file another shipped item had just written; the allow-list is `ALLOWED` in `enforce-minimal-tree.ts` and this line has been wrong often enough to get the same bug filed three times (#27, #31, #46). Enforced by a mandatory prompt rule plus the self-healing `scripts/ts/enforce-minimal-tree.ts`, which folds any forbidden artifact into `plan.md` under a sentinel block and deletes it; unknown top-level entries only warn, so stacking is safe
 - `diff-minimal` — sibling to `spec-minimal`, and the distinction is the whole
   point: that one makes the **spec** shorter, this one makes the **change**
@@ -585,19 +584,25 @@ on first run in a project that still tracks it, so the migration is automatic.
   `spec-minimal` because that one is a pure deterministic post-processor and this
   adds a prompt layer; both sit at the default priority 10 and compose as `wrap`
   layers in id order, and the stripper never touches either new section
-- `spec-ui-preview` — adds a GitHub-safe inline HTML UI preview to UI-touching specs (split out of `spec-minimal`)
-- `button-design` — `wrap` layers on `speckit.specify` and `speckit.plan` that hold
-  every UI-touching feature to button-design rules. The spec gets a mandatory
-  `## Actions & Buttons` table (screen, label, `button`/`link`, primary/secondary/
-  tertiary, destructive safeguard) or an explicit `None — no user-facing UI.`; the
-  plan gets `## Button System` with five populated markers (Component, Color roles,
-  States, Touch targets, Placement). `check-buttons.ts spec|plan` is the gate and
-  checks only what is mechanical: at most one primary per screen, links take no
-  role, 1–3 word non-generic button labels, destructive labels name their object and
-  carry a confirm/type/undo safeguard, no touch target under 44×44. Jargon,
-  "match the moment", and placement quality stay prompt-only, because a checker
-  that guesses at prose cries wolf. A screen with buttons and no primary is a
-  note, not a failure: a toolbar has none. `selftest-button-design.ts` is the check
+- `button-design` — SwiftUI `wrap` layers on `speckit.specify` and `speckit.plan` that
+  hold every UI-touching feature to button-design rules drawn from Apple's HIG. The
+  spec gets a mandatory `## Actions & Buttons` table (`Screen | Label | Control |
+  Style | Role | Placement | Safeguard`: Control is `Button`/`NavigationLink`/`Link`,
+  Style is `borderedProminent`/`bordered`/`borderless`/`plain`/`automatic`, Role is
+  `—`/`destructive`/`cancel`) or an explicit `None — no user-facing UI.`; the plan
+  gets `## Button System` with six populated markers (Component, Styles & tint,
+  States & feedback, Hit targets, Accessibility, Placement). `check-buttons.ts
+  spec|plan` is the gate and checks only what is mechanical: at most one
+  `.borderedProminent` per screen, links take no role and no prominent style, 1–3
+  word non-generic button labels, a named placement, no destructive action in
+  `.confirmationAction`/`.cancellationAction`, destructive labels carry
+  `role: .destructive`, name their object and have a safeguard
+  (`confirmationDialog`/`alert`/type-to-confirm/undo), Accessibility addresses
+  Dynamic Type, and no hit target under 44×44pt. Jargon, "match the moment", and
+  placement quality stay prompt-only, because a checker that guesses at prose
+  cries wolf. A screen with in-content buttons and no `.borderedProminent` is a
+  note, not a failure: a secondary panel has none. `selftest-button-design.ts` is
+  the check
 - `tdd` — `wrap` layer on `speckit.implement` that runs every behaviour-changing
   task through Red-Green-Refactor: list the scenarios, then per scenario write one
   test, run the whole suite and see it fail **for the expected reason** (a syntax
@@ -608,9 +613,12 @@ on first run in a project that still tracks it, so the migration is automatic.
   a story's test tasks are the Red wave, confirmed failing before the
   implementation wave starts. **Priority 11**, inside `parse-dont-validate` (9),
   outside `explicit-task-dependencies` (20). Gated on a green suite and
-  `check-tests-accompany.ts` (exit 1 when production source changed since the
-  merge-base with no test file changed; 4 on an empty change set, which is not a
-  pass). Red-before-green itself is recorded per scenario in the report, not
+  `check-tests-accompany.ts` (exit 1 when production source — Swift, Objective-C or
+  Metal — changed since the merge-base with no test file changed; 4 on an empty
+  change set, which is not a pass). A production file whose name ends in
+  `Test.swift` is counted as a test — a known false match. The suite runs with
+  `swift test` or `xcodebuild test` on an iOS Simulator (XCTest / Swift Testing),
+  so a consumer needs Xcode plus a simulator runtime. Red-before-green itself is recorded per scenario in the report, not
   checked mechanically. That same release made tests mandatory in
   `explicit-task-dependencies`' tasks template.
   **Jev assist (issue #116)** is optional: the shared `jev.ts` (see *Jev* below)
@@ -619,31 +627,29 @@ on first run in a project that still tracks it, so the migration is automatic.
   `red-reason` is gated: shadow mode until `SPECKIT_JEV_AUTOMATE=red-reason`
   (or the legacy `TDD_JEV_AUTOMATE_RED=1`). `selftest-tdd.ts` checks the gate;
   `scripts/selftest-jev.ts` checks the cases
-- `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
+- `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search (**iOS:** Apple frameworks first, then `apple/swift-*` packages, then the Swift Package Index; candidates judged on minimum iOS, Swift 6 concurrency, license, maintenance, binary size and SPM support) to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `ponytail-plan` — `wrap` layer on `speckit.plan` that applies the ponytail ladder
   (YAGNI → reuse → stdlib → native → installed dep → one line → new code) at the
   phase where new files, abstractions, dependencies and config knobs get committed
-  to — the implement prelude can only shrink what the plan already chose, and
+  to — implement can only shrink what the plan already chose, and
   `library-research` pushes the other way. Every proposed addition is climbed; a
   rung-1 item is cut and a rung-2–6 item is rewritten in `plan.md`, not merely
   noted. The record is a mandatory `## Ladder` table (`Item | Kind | Rung | Reason`)
   or `None — extends existing code only.`; a new dependency (rung 7) needs a
   `**Dependency justification:**` line. `check-ladder.ts` checks only the mechanical
   half. **Priority 8**, so it wraps outside `parse-dont-validate` (9) and every
-  default-10 plan layer and judges what they wrote; sharing 8 with
-  `implement-prelude-skills` is harmless since that one targets implement only. The
+  default-10 plan layer and judges what they wrote. The
   ladder is embedded, so the plugin is optional. `selftest-ponytail-plan.ts` is the
   check
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
-- `implement-prelude-skills` — `/speckit-implement` override that invokes the `ponytail:ponytail` skill (when available) as a mandatory prelude before implementation begins. Implementation-discipline skills only: a prose-register skill compresses the very audit trail an unattended `/speckit-autopilot-run` depends on, so it does not belong in the prelude (issue #72)
-- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic scanner — Python via its own tokenizer (it no longer runs Python), TypeScript via a bun-run helper on a pinned `oxc-parser` from the machine cache, so no TS install is needed — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules). **The gate scans TypeScript only for now**: Python files are skipped, not flagged, unless `PDV_PYTHON=1` — the Python scanner and its tests stay, so turning it back on is that one variable.
+- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing Swift, then gates completion on a deterministic **Swift-only lexer** — TypeScript run by bun, no Swift toolchain needed). **2.0.0** has five rules, applied outside parser scopes: `PDV001` `Any`/`AnyObject` as a type, `PDV002` `JSONSerialization`/`PropertyListSerialization`/`decode([String: …].self)`, `PDV003` Bool-returning `isValid…`/`validate…` funcs, `PDV004` `as!`, `PDV005` `try!`. Parser scopes are files named `*Parser`/`Parsing`/`Decod`/`Codec`/`Schema`/`DTO*`, `Decodable`/`Codable`/`*Parser*` types, and `init(from:)`/`init(parsing:)`/`parse…` functions. `Pods/`, `Carthage/`, `.build/`, `DerivedData/` and `SourcePackages/` are skipped; waivers are `//` comments naming the rule id.
   **The gate is one invocation: `parse_dont_validate.ts scan --new-only`.** The two
   deterministic steps around it used to be driven by hand every run (issue #66) and
   both had exactly one right answer: change-set detection now anchors at the git
   worktree root instead of the cwd — `git diff --name-only` reports root-relative
   paths while `git ls-files --others` is limited to the cwd subtree, so a scan
-  started from `functions/` collapsed to the untracked files below it and a
+  started from a subdirectory collapsed to the untracked files below it and a
   one-file scan reads exactly like a clean gate — and `--new-only` re-scans the
   base ref's copy of the same files and subtracts what reproduces there, replacing
   the hand-diff against `main`. Findings are matched by (file, rule, source text),
@@ -653,19 +659,10 @@ on first run in a project that still tracks it, so the migration is automatic.
   unknown option or a `--base` with no ref is `2`, paths that resolve to no file
   or a cwd outside any git worktree is `3`, and an empty change set is `4` — the
   one non-zero the implement gate may proceed past, and only for a run that truly
-  wrote no TypeScript or Python. They all used to print
-  `no TypeScript/Python files to scan` and exit `0`, so a typo in the flag was
-  indistinguishable from a passing gate. The bun helper is the same defect one
-  layer down: it reads a JSON job on **stdin** and ignores file arguments, and a
-  direct call with filenames printed `{"findings":[]}` — it now refuses file
-  arguments, empty/malformed stdin and a zero-file job, and an unreadable source
-  is an error rather than a silent skip. It never resolves anything from the
-  project, so a monorepo package scans the same as the root while the driver
-  stays anchored at the repo root for git paths. `./test-pdv-changeset.ts`
-  is the check
-- `progress-report` — wraps the five cycle commands (specify/plan/tasks/implement/review) to keep a per-branch status card current in an agent-os dashboard repo (default `~/Code/agent-os`, configurable via `AGENT_OS_DASHBOARD`); rewrites `<dashboard>/branches/<slug>.md` with per-phase status + review substeps on each transition, no-op when the dashboard is absent. The `wrap` on tasks/implement is dropped when another preset **replaces** those bodies, so pair it with the `progress` **extension** (above), whose lifecycle hooks cover those two phases clobber-immune.
-
-`spec-minimal` 2.0.0 is a breaking split: UI preview → `spec-ui-preview`, issue sync → the `git` extension. See the migration note in `README.md`.
+  wrote no Swift. Upstream's scanner used to print "no files to scan" and exit
+  `0` in all of those cases, so a typo in the flag was indistinguishable from a
+  passing gate; an unreadable source is likewise an error, never a silent skip.
+  `./test-pdv-changeset.ts` is the check
 
 ## Jev: bounded judgment calls
 
@@ -683,7 +680,7 @@ install on a drifted copy — edit `scripts/jev.ts`, then `cp` it over every cop
 | `fast-path` | `autopilot` Step 2.5 | yes; never over the hard rules (`epic`, spreading past bounds) |
 | `finding`, `same-finding` | `review` coordinator | yes, except dropping a `false_positive` (gated) |
 | `spec-change` | `stale-tasks-guard` | only `wording` (p ≤ 0.15), which skips the halt |
-| `applies-ui`, `applies-library` | `button-design`, `spec-ui-preview`, `library-research` | only `skip` |
+| `applies-ui`, `applies-library` | `button-design`, `library-research` | only `skip` |
 
 The contract is the same everywhere: exit 0 acts on `decision`; exit 3 means
 decide **exactly as before Jev** (no `TYPESAFE_API_KEY`, `SPECKIT_JEV=off`, no

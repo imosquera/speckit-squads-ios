@@ -30,7 +30,7 @@ prompt's job. `selftest-ponytail-plan.ts` is the check.
 
 ## Why the plan phase
 
-Ponytail is already loaded at implement (`implement-prelude-skills`) and at
+Ponytail is already loaded at
 review (`ponytail-review`). By implement, the plan has already committed to the
 new files, layers and dependencies, and cutting them means arguing with the
 plan. At plan time nothing is written and `tasks.md` does not exist yet, so a cut
@@ -50,8 +50,7 @@ specify preset add --dev presets/ponytail-plan --priority 8
 Wrappers compose with the lowest priority number outermost, so its post-seam
 text runs **last**. At 8 it sits outside `parse-dont-validate` (9) and
 `library-research`, `diff-minimal`, `spec-minimal`, `button-design` (default 10),
-and judges what they wrote. The ladder never cuts `parse-dont-validate`'s trust-boundary parsers. Sharing 8 with
-`implement-prelude-skills` is harmless: that one targets only `speckit.implement`.
+and judges what they wrote. The ladder never cuts `parse-dont-validate`'s trust-boundary parsers.
 
 ## Ponytail is optional
 

@@ -3,12 +3,14 @@
 // Commit changes after a Spec Kit command completes, per the auto_commit
 // section of git-config.yml. commit_exclude paths are held out of the commit
 // (issue #22) but not scrubbed: that threw away graph rebuilds between phases
-// (issue #109). create-pr.ts and clean.ts still scrub.
+// (issue #109). create-pr.ts and clean.ts still scrub. Untracked Xcode build output
+// and per-user state (DerivedData/, xcuserdata/, *.xcresult, ... see XCODE_ARTIFACTS)
+// is held out the same way, whether or not the project's .gitignore covers it.
 //
 // Usage: auto-commit.ts <event_name>     e.g. auto-commit.ts after_specify
 import { readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { commitExcludes, featureSourceIssue } from "./git-common.ts";
+import { commitExcludes, featureSourceIssue, pendingXcodeArtifacts } from "./git-common.ts";
 
 const event = process.argv[2] ?? "";
 if (!event) {
@@ -112,14 +114,17 @@ if (phase === "after") {
 }
 
 const excludes = commitExcludes(root);
+const artifacts = pendingXcodeArtifacts(root);
 for (const e of excludes) git("reset", "-q", "--", e); // unstage anything already staged
-const add =git("add", "--", ".", ...excludes.map((e) => `:(exclude)${e}`));
+for (const a of artifacts) git("reset", "-q", "--", `:(literal)${a}`);
+const add = git("add", "--", ".", ...excludes.map((e) => `:(exclude)${e}`), ...artifacts.map((a) => `:(exclude,literal)${a}`));
 if (!add.ok) {
   console.error(`[specify] Error: git add failed: ${add.out}`);
   process.exit(1);
 }
 if (git("diff", "--cached", "--quiet").ok) {
-  console.error(`[specify] Nothing to commit after ${event} — all changes are in excluded paths (${excludes.join(", ") || "none"})`);
+  const held = [...excludes, ...artifacts];
+  console.error(`[specify] Nothing to commit after ${event} — all changes are in excluded paths (${held.join(", ") || "none"})`);
   process.exit(0);
 }
 const commit = git("commit", "-q", "-m", message);
@@ -128,4 +133,5 @@ if (!commit.ok) {
   process.exit(1);
 }
 if (excludes.length) console.error(`[specify] Held out of the commit: ${excludes.join(", ")}`);
+if (artifacts.length) console.error(`[specify] Held out Xcode build/user state (add it to .gitignore): ${artifacts.join(", ")}`);
 console.error(`[OK] Changes committed ${phase} ${command}`);

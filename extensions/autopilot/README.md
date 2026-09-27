@@ -3,10 +3,11 @@
 Registers two commands:
 
 - **`/speckit-autopilot-run`** — take the highest-ranked eligible open GitHub issue
-  (or a given issue number) from backlog to a reviewed **draft PR**, driving the whole
-  speckit pipeline unattended — pick → worktree → specify → clarify (auto-answered)
-  → plan → tasks → implement → review → draft PR — and posting progress to the issue
-  at every stage.
+  in an **iOS/Swift app repo** (or a given issue number) from backlog to a reviewed
+  **draft PR**, driving the whole speckit pipeline unattended — pick → worktree →
+  specify → clarify (auto-answered) → plan → tasks → implement → review → draft PR —
+  gating on `xcodebuild build/test` against an iOS Simulator (or `swift build` /
+  `swift test` for a pure package), and commenting on the issue at every stage.
 - **`/speckit-autopilot-schedule`** — put `/speckit-autopilot-run` on a recurring
   **launchd** timer so the backlog drains itself (default **every 2h**, configurable
   via `--interval-hours N`). Opt-in and macOS-only; also `uninstall`, `status`, and
@@ -63,7 +64,7 @@ One issue went through that loop **10 times over two days** before anyone notice
 marker line:
 
 ```
-AUTOPILOT-BLOCKED: fix target `~/.claude/skills/hindsight/hindsight.py` resolves outside any git repo
+AUTOPILOT-BLOCKED: fix target `~/Code/shared-kit/Sources/Networking/APIClient.swift` resolves outside any git repo
 ```
 
 `preflight-issues.ts`'s `blocked_reason()` reads that line back (newest matching
@@ -112,10 +113,11 @@ single-flight lock still serializes this machine's ticks and Step 2.0's liveness
 re-check still closes the residual window.
 
 ```
-$ bun check-target-repo.ts hindsight.py README.md
-FOREIGN: hindsight.py → /Users/iam/Code/dotskills
-INSIDE: README.md → /Users/iam/Code/lead-drop
-BLOCKED: 1 of 2 target(s) not in /Users/iam/Code/lead-drop
+$ bun check-target-repo.ts ../shared-kit/Sources/APIClient.swift App/LoginView.swift
+FOREIGN: ../shared-kit/Sources/APIClient.swift → /Users/iam/Code/shared-kit
+INSIDE: App/LoginView.swift → /Users/iam/Code/my-app
+KIND: project MyApp.xcodeproj
+BLOCKED: 1 of 2 target(s) not in /Users/iam/Code/my-app
 ```
 
 - Resolves `~` and symlinks — the #34 target presented through a symlink.
@@ -131,6 +133,40 @@ BLOCKED: 1 of 2 target(s) not in /Users/iam/Code/lead-drop
 A non-zero exit is a *Durable* stop: park with `park-issue.ts`, naming the repo the
 fix belongs in. There is no claim to release — that is the point of running it here.
 A human moves the issue; autopilot does not guess.
+
+## Build and test gates on iOS (`--kind`, `sim-destination.ts`)
+
+Autopilot's gates build and test the app, unattended, so the skill resolves *how*
+once in its Preflight and reuses it for the whole run:
+
+- **`check-target-repo.ts --kind`** names the repo's iOS target:
+  `KIND: workspace App.xcworkspace` › `KIND: project App.xcodeproj` ›
+  `KIND: package Package.swift` (that preference order; shallowest first; bundles
+  are not descended into, so the `project.xcworkspace` inside every `.xcodeproj`
+  never counts; `.build`, `DerivedData`, `Pods`, `Carthage` are skipped). Exit 1
+  with `KIND: none` — the skill then checks for an XcodeGen `project.yml` or Tuist
+  `Project.swift` to generate from before concluding this isn't an iOS project. The
+  normal verdict output carries the same `KIND:` line.
+- **`sim-destination.ts`** prints an `xcodebuild -destination` —
+  `platform=iOS Simulator,id=<udid>` — from `xcrun simctl list devices available -j`:
+  a booted iPhone if there is one, else an iPhone on the newest installed iOS runtime.
+  `SPECKIT_AUTOPILOT_SIM_DESTINATION` overrides it verbatim. Exit 1 when no iOS
+  runtime is installed or `simctl` is missing (only the Command Line Tools
+  selected): a *Missing capability* stop, because installing a runtime or selecting
+  Xcode is interactive. `--selftest` runs its fixtures.
+
+Gates are then `xcodebuild build|test -workspace|-project … -scheme … -destination "$DEST"`
+for an app, or `swift build` / `swift test` for a pure package; a project's own
+documented command (Makefile, fastlane lane, test plan) wins over the generic form.
+**A scheduled run needs full Xcode selected and at least one iOS Simulator runtime
+installed on the machine** — launchd gives the job no UI, but `xcodebuild test`
+boots the simulator headlessly, so no logged-in Simulator.app is required. Signing is
+never touched: Simulator builds need no team.
+
+`scripts/ts/py.ts` is unrelated to the target language: it is the Python-semantics
+shim (JSON scanner, `str.split` whitespace, round-half-even) that keeps
+`preflight-issues.ts` and `stream-decode.ts` output byte-identical to the
+Python originals they were ported from. It is harness code and stays.
 
 ## Stale worktree vs. live run (`liveness()`)
 
@@ -284,8 +320,8 @@ you run `install` — it's strictly opt-in.
 ## Install
 
 ```bash
-specify extension add --dev /path/to/speckit-squads/extensions/autopilot
-# or, for the whole repo:  /path/to/speckit-squads/install.ts <project>
+specify extension add --dev /path/to/speckit-squads-ios/extensions/autopilot
+# or, for the whole repo:  /path/to/speckit-squads-ios/install.ts <project>
 ```
 
 ## Optional: name each session after its issue (SessionStart hook)
@@ -315,7 +351,7 @@ yourself:
 
 (Adjust the path if your install location differs; with `--dev` installs the
 extension resolves back to this repo's source tree, so you can also point at
-`/path/to/speckit-squads/extensions/autopilot/hooks/session-title.ts` directly.)
+`/path/to/speckit-squads-ios/extensions/autopilot/hooks/session-title.ts` directly.)
 
 ### What it does
 

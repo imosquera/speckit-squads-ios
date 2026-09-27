@@ -3,6 +3,8 @@
 // the absolute worktree root and the exact diff base, for local changes (Modes
 // A/B) and for a pull request (Mode C, `--pr <N>`, with `gh` stubbed on PATH).
 // Without them a reviewer can review an unrelated checkout and look clean (#52).
+// Also checks the iOS/Xcode noise filter: project.pbxproj, asset catalogs,
+// xcuserdata and snapshot images go to ignored_files; Package.swift never does.
 //
 // Usage: bun test-review-scope.ts
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
@@ -105,6 +107,7 @@ git(SEED, "checkout", "-qb", "feat/pr");
 appendFileSync(join(SEED, "keep.txt"), "edit\n"); writeFileSync(join(SEED, "added.txt"), "new\n");
 git(SEED, "rm", "-q", "gone.txt");
 mkdirSync(join(SEED, "graphify-out")); writeFileSync(join(SEED, "graphify-out/graph.json"), "{}\n");
+mkdirSync(join(SEED, "App.xcodeproj")); writeFileSync(join(SEED, "App.xcodeproj/project.pbxproj"), "// !$*UTF8*$!\n");
 git(SEED, "add", "-A"); git(SEED, "commit", "-qm", "pr"); git(SEED, "push", "-q", "origin", "feat/pr");
 const PR_HEAD = git(SEED, "rev-parse", "HEAD");
 
@@ -112,7 +115,7 @@ const view = (head: string, cross = false) => JSON.stringify({
   number: 7, headRefName: "feat/pr", headRefOid: head, baseRefName: "main",
   url: "https://github.com/o/r/pull/7", title: 'Add "thing"', isCrossRepository: cross,
 });
-const STUB_DIFF = "keep.txt\nadded.txt\ngone.txt\ngraphify-out/graph.json";
+const STUB_DIFF = "keep.txt\nadded.txt\ngone.txt\ngraphify-out/graph.json\nApp.xcodeproj/project.pbxproj";
 const PATH = `${STUBBIN}:${process.env.PATH}`;
 const runc = (dir: string, v: string, extra: Record<string, string> = {}) =>
   detect(dir, ["--pr", "7"], { PATH, STUB_VIEW: v, STUB_DIFF, ...extra });
@@ -128,7 +131,8 @@ check("mode C diff_base is merge-base(origin/main, head)", PR_BASE, o.j.diff_bas
 check("mode C pr / pr_url / pr_title", '7|https://github.com/o/r/pull/7|Add "thing"', `${o.j.pr}|${o.j.pr_url}|${o.j.pr_title}`);
 // deletions dropped (as ACMR does in A/B); graphify-out left for the coordinator
 check("mode C changed_files from gh minus deletions", "keep.txt added.txt graphify-out/graph.json", (o.j.changed_files ?? []).join(" "));
-check("mode C diff <base> <head> resolves", "added.txt\ngone.txt\ngraphify-out/graph.json\nkeep.txt", git(CLONE, "diff", "--name-only", o.j.diff_base, o.j.head));
+check("mode C pbxproj goes to ignored_files", "App.xcodeproj/project.pbxproj", (o.j.ignored_files ?? []).join(" "));
+check("mode C diff <base> <head> resolves", "App.xcodeproj/project.pbxproj\nadded.txt\ngone.txt\ngraphify-out/graph.json\nkeep.txt", git(CLONE, "diff", "--name-only", o.j.diff_base, o.j.head));
 check("mode C git show <head>:<path> reads the PR copy", "base\nedit", git(CLONE, "show", `${o.j.head}:keep.txt`));
 
 // checkout=worktree, in a path with a space: repo_root must be the whole path.
@@ -157,6 +161,44 @@ check("--pr with no number exits 1", "1", String(detect(CLONE, ["--pr"], { PATH 
 // Modes A/B keep the same JSON shape: the Mode C keys exist, empty.
 o = detect(REPO);
 check("mode A/B carry empty pr/pr_url/head/checkout", "|||", `${o.j.pr}|${o.j.pr_url}|${o.j.head}|${o.j.checkout}`);
+check("mode A/B carry ignored_files", "true", String(Array.isArray(o.j.ignored_files)));
+
+// --- iOS/Xcode noise: churn is reported apart, manifests stay reviewable ---
+rmSync(join(REPO, "brand-new.txt"));
+git(REPO, "checkout", "-qb", "ios");
+const put = (rel: string, body = "x\n") => {
+  mkdirSync(join(REPO, rel, ".."), { recursive: true });
+  writeFileSync(join(REPO, rel), body);
+};
+put("Package.swift", "// swift-tools-version:6.0\n");
+put("Package.resolved", "{}\n");
+put("App/ContentView.swift", "import SwiftUI\n");
+put("App/Legacy.m", "@import UIKit;\n");
+put("App/Info.plist", "<plist/>\n");
+put("App.xcodeproj/project.pbxproj", "// !$*UTF8*$!\n");
+put("App.xcodeproj/project.xcworkspace/contents.xcworkspacedata", "<Workspace/>\n");
+put("App.xcodeproj/xcuserdata/me.xcuserdatad/xcschemes/xcschememanagement.plist", "<plist/>\n");
+put("App/Assets.xcassets/AppIcon.appiconset/Contents.json", "{}\n");
+put("AppTests/__Snapshots__/ContentViewTests/testLight.1.png", "png\n");
+put("AppTests/ContentViewTests.swift", "import Testing\n");
+git(REPO, "add", "-A"); git(REPO, "commit", "-qm", "ios");
+o = detect(REPO);
+check("ios: exits 0", "0", String(o.rc));
+check("ios: reviewable files (Package.swift/Package.resolved kept)",
+  "App/ContentView.swift App/Info.plist App/Legacy.m AppTests/ContentViewTests.swift Package.resolved Package.swift",
+  [...(o.j.changed_files ?? [])].sort().join(" "));
+check("ios: Xcode churn in ignored_files",
+  "App.xcodeproj/project.pbxproj App.xcodeproj/project.xcworkspace/contents.xcworkspacedata App.xcodeproj/xcuserdata/me.xcuserdatad/xcschemes/xcschememanagement.plist App/Assets.xcassets/AppIcon.appiconset/Contents.json AppTests/__Snapshots__/ContentViewTests/testLight.1.png",
+  [...(o.j.ignored_files ?? [])].sort().join(" "));
+
+// A change of nothing but churn is "nothing to review" (exit 2), not an empty pass.
+git(REPO, "checkout", "-qb", "ios-churn");
+git(REPO, "update-ref", "refs/remotes/origin/main", "ios");
+appendFileSync(join(REPO, "App.xcodeproj/project.pbxproj"), "churn\n");
+o = detect(REPO);
+check("ios churn-only exits 2", "2", String(o.rc));
+check("ios churn-only changed_files empty", "", (o.j.changed_files ?? ["?"]).join(" "));
+check("ios churn-only still lists ignored_files", "App.xcodeproj/project.pbxproj", (o.j.ignored_files ?? []).join(" "));
 
 console.log(fail === 0 ? "PASS" : "FAIL");
 process.exit(fail);

@@ -7,6 +7,13 @@
 // Exit: 0 changes found, 1 error, 2 no changes. The coordinator branches on these.
 // JSON carries every key in every mode so the shape is stable; graphify-out/ is
 // NOT filtered here (the coordinator drops it).
+//
+// iOS/Xcode noise: tool-generated or binary churn (project.pbxproj, asset
+// catalogs, xcuserdata, workspace plumbing, snapshot-test reference images) is
+// moved from changed_files to ignored_files — it is not reviewable source, but it
+// is still reported so the coordinator can name it. Package.swift, Package.resolved,
+// Info.plist, *.entitlements, *.xcconfig, storyboards/xibs and string catalogs stay
+// reviewable: they carry dependencies, ATS/entitlement and build settings, and UI.
 
 import { statSync } from "node:fs";
 
@@ -20,6 +27,10 @@ Detect changed files for code review.
           origin/<base> and the PR head sha. checkout=worktree when a local
           worktree has the head branch checked out, else checkout=none (read the
           head via \`git show <head>:<path>\`).
+
+Xcode noise (*.pbxproj, *.xcassets/, xcuserdata/, *.xcworkspace/ plumbing,
+__Snapshots__/ reference images, .DS_Store) is listed under ignored_files, not
+changed_files. Package.swift and Package.resolved are always reviewable.
 
 OPTIONS:
   --json        Output in JSON format
@@ -83,8 +94,23 @@ const gitZ = (...args: string[]) => run(["git", ...args], { raw: true }).out.spl
 
 const isDir = (p: string) => { try { return statSync(p).isDirectory(); } catch { return false; } };
 
+// Generated/binary Xcode churn: never reviewable source. Matched per path segment.
+const isXcodeNoise = (f: string): boolean => {
+  const segs = f.split("/");
+  const base = segs[segs.length - 1] ?? "";
+  if (base === ".DS_Store" || base.endsWith(".pbxproj")) return true;
+  return segs.slice(0, -1).some(d =>
+    d.endsWith(".xcassets") || d === "xcuserdata" || d.endsWith(".xcworkspace") || d === "__Snapshots__");
+};
+
 const changed: string[] = [];
-const addUnique = (files: string[]) => { for (const f of files) if (f && !changed.includes(f)) changed.push(f); };
+const ignored: string[] = [];
+const addUnique = (files: string[]) => {
+  for (const f of files) {
+    if (!f || changed.includes(f) || ignored.includes(f)) continue;
+    (isXcodeNoise(f) ? ignored : changed).push(f);
+  }
+};
 
 if (!Bun.which("git")) errorExit("git is not available. The review extension requires git to identify changed files.");
 if (!gitOk("rev-parse", "--git-dir")) errorExit("Not a git repository. The review extension requires git to identify changed files.");
@@ -179,21 +205,26 @@ if (!mode) {
   if (!defaultBranch) defaultBranch = "(unknown)";
 }
 
-const emitJson = (files: string, extra = "") =>
-  console.log(`{"branch":"${esc(currentBranch)}","default_branch":"${esc(defaultBranch)}","repo_root":"${esc(repoRoot)}","diff_base":"${esc(diffBase)}","mode":"${esc(mode)}","pr":"${esc(prNumber)}","pr_url":"${esc(prUrl)}","pr_title":"${esc(prTitle)}","head":"${esc(headSha)}","checkout":"${esc(checkout)}","changed_files":${files}${extra}}`);
+const jsonList = (xs: string[]) => `[${xs.map(f => `"${esc(f)}"`).join(",")}]`;
+const emitJson = (extra = "") =>
+  console.log(`{"branch":"${esc(currentBranch)}","default_branch":"${esc(defaultBranch)}","repo_root":"${esc(repoRoot)}","diff_base":"${esc(diffBase)}","mode":"${esc(mode)}","pr":"${esc(prNumber)}","pr_url":"${esc(prUrl)}","pr_title":"${esc(prTitle)}","head":"${esc(headSha)}","checkout":"${esc(checkout)}","changed_files":${jsonList(changed)},"ignored_files":${jsonList(ignored)}${extra}}`);
 
 if (!changed.length) {
-  if (jsonMode) emitJson("[]", ',"message":"No changes detected. Nothing to review."');
-  else console.log("No changes detected. Nothing to review.");
+  const message = ignored.length
+    ? "Only non-reviewable Xcode churn changed (see ignored_files). Nothing to review."
+    : "No changes detected. Nothing to review.";
+  if (jsonMode) emitJson(`,"message":"${esc(message)}"`);
+  else console.log([message, ...ignored.map(f => `  ${f}`)].join("\n"));
   process.exit(2);
 }
 
-if (jsonMode) emitJson(`[${changed.map(f => `"${esc(f)}"`).join(",")}]`);
+if (jsonMode) emitJson();
 else {
   console.log([
     `BRANCH: ${currentBranch}`, `DEFAULT_BRANCH: ${defaultBranch}`, `REPO_ROOT: ${repoRoot}`,
     `DIFF_BASE: ${diffBase}`, `MODE: ${mode}`, `PR: ${prNumber}`, `PR_URL: ${prUrl}`,
     `PR_TITLE: ${prTitle}`, `HEAD: ${headSha}`, `CHECKOUT: ${checkout}`, "CHANGED_FILES:",
     ...changed.map(f => `  ${f}`),
+    ...(ignored.length ? ["IGNORED_FILES (Xcode churn):", ...ignored.map(f => `  ${f}`)] : []),
   ].join("\n"));
 }

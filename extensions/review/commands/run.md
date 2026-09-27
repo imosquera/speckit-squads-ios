@@ -1,12 +1,12 @@
 ---
-description: Comprehensive code review using specialized agents — code (incl. security & performance), arch, comments, tests, errors, types, and simplify (incl. ponytail review + audit) — then applies the behaviour-preserving ponytail cuts. One engine for every scope: the current feature branch, the working directory, or a GitHub pull request (`--pr N`). Use this whenever the user asks to review their changes, do a code review, review a PR, check a pull request, "look at this PR", "give me feedback on this PR", or "what do you think of this PR".
+description: Comprehensive Swift/iOS code review using specialized agents — code (incl. crash sites, retain cycles, main-thread UI, security, SwiftUI performance & accessibility), arch (SwiftUI/MVVM/TCA, DI, module boundaries), comments, tests, errors, types, and simplify (incl. ponytail review + audit) — then applies the behaviour-preserving ponytail cuts. One engine for every scope: the current feature branch, the working directory, or a GitHub pull request (`--pr N`). Use this whenever the user asks to review their changes, do a code review, review a PR, check a pull request, "look at this PR", "give me feedback on this PR", or "what do you think of this PR".
 scripts:
   sh: bun scripts/ts/detect-changed-files.ts
 ---
 
 # Comprehensive Code Review
 
-Run a comprehensive review using multiple specialized agents, each focusing on a different aspect of code quality. The engine is the same for every review; **scope is the only thing that varies** — a feature branch, the working directory, or a pull request.
+Run a comprehensive review of a Swift/iOS app change using multiple specialized agents, each focusing on a different aspect of code quality. The engine is the same for every review; **scope is the only thing that varies** — a feature branch, the working directory, or a pull request.
 
 **Arguments:** "$ARGUMENTS"
 
@@ -27,12 +27,12 @@ Run a comprehensive review using multiple specialized agents, each focusing on a
 
 3. **Available Review Aspects:**
 
-   - **code** - General code review: project guidelines, bugs, data flow, security, performance
-   - **arch** - Architecture & API design: public interfaces, contracts, backward compatibility, consistency
-   - **comments** - Analyze code comment accuracy and maintainability
-   - **tests** - Review test coverage quality and completeness
-   - **errors** - Check error handling for silent failures
-   - **types** - Analyze type design and invariants (if new types added)
+   - **code** - General code review: project guidelines, crash sites (`!`, `try!`, `as!`), retain cycles, main-thread UI, security (Keychain, ATS), SwiftUI performance, accessibility (labels, Dynamic Type)
+   - **arch** - Architecture & API design: SwiftUI/MVVM/TCA boundaries, `@Observable` state ownership, dependency injection, module/package boundaries, public API and persisted-format contracts
+   - **comments** - DocC `///` accuracy and completeness, comment rot
+   - **tests** - XCTest / Swift Testing coverage and quality, async tests, UI tests, snapshot tests
+   - **errors** - `throws`/`Result`/typed throws, swallowed `try?`, silent failures, user-facing error states
+   - **types** - Value vs reference types, enums with associated values, `Sendable`, actor isolation, strict concurrency
    - **simplify** - Simplify code for clarity; ponytail review of the change and audit of the touched files
    - **all** - Run all applicable reviews (default)
 
@@ -50,7 +50,9 @@ Run a comprehensive review using multiple specialized agents, each focusing on a
        - **Mode A (feature branch):** diffs the current branch against the default branch (`main`/`master`) from the merge-base, plus any staged, unstaged and untracked changes.
        - **Mode B (working directory):** falls back to staged + unstaged + untracked changes when there is no feature branch (e.g., working directly on the default branch).
        - **Mode C (pull request, `--pr <N>`):** the PR's files from `gh pr diff`, based at the merge-base of `origin/<base>` and the PR head sha. `checkout` is `worktree` when a local worktree has the PR's head branch checked out (`repo_root` is that worktree), and `none` otherwise (`repo_root` is this checkout and the PR is read through git objects at `head`).
-     - JSON output: `{"branch", "default_branch", "repo_root", "diff_base", "mode", "pr", "pr_url", "pr_title", "head", "checkout", "changed_files": [...]}` — the Mode C fields are empty in Modes A/B.
+     - JSON output: `{"branch", "default_branch", "repo_root", "diff_base", "mode", "pr", "pr_url", "pr_title", "head", "checkout", "changed_files": [...], "ignored_files": [...]}` — the Mode C fields are empty in Modes A/B.
+     - **`ignored_files` is Xcode churn**, already removed from `changed_files`: `*.pbxproj`, anything under `*.xcassets/`, `xcuserdata/`, `*.xcworkspace/`, `__Snapshots__/` reference images, `.DS_Store`. Do not dispatch these to reviewers as code. Two exceptions, handled by you: (1) a changed `project.pbxproj` can carry build-setting changes — grep its diff for setting lines (`SWIFT_VERSION`, `SWIFT_STRICT_CONCURRENCY`, `IPHONEOS_DEPLOYMENT_TARGET`, `CODE_SIGN_ENTITLEMENTS`, `INFOPLIST_KEY_*`, `OTHER_SWIFT_FLAGS`, `ENABLE_*`) and hand any hits to `code` and `arch` as context; (2) changed `__Snapshots__/` images tell `tests` that reference images were re-recorded — list them in its prompt. `Package.swift`, `Package.resolved`, `Info.plist`, `*.entitlements`, `PrivacyInfo.xcprivacy`, `*.xcconfig`, `*.xcstrings`, storyboards/xibs and `*.xctestplan` stay in `changed_files` and are reviewed. List the ignored paths (count, or the paths if few) under the report's Overview.
+     - Exit 2 with a non-empty `ignored_files` means the change is **only** Xcode churn: report that, with the list, rather than "no changes".
      - `repo_root` is an absolute path. `diff_base` is the merge-base in Modes A and C
        and empty in Mode B — a **base, not a range**, so in Mode A
        `git diff <diff_base>` reaches the working tree and covers committed, staged
@@ -66,12 +68,12 @@ Run a comprehensive review using multiple specialized agents, each focusing on a
 5. **Determine Applicable Reviews**
 
    Based on changes **and** config toggles (skip any agent where `agents.<name>` is `false`):
-   - **Always applicable** (if enabled): `/speckit.review.code` (general quality, security, performance)
-   - **If public interfaces, exported types/functions, handlers/routes, CLI flags, schemas or persisted/wire formats changed** (if enabled): `/speckit.review.arch`
-   - **If test files changed** (if enabled): `/speckit.review.tests`
-   - **If comments/docs added** (if enabled): `/speckit.review.comments`
-   - **If error handling changed** (if enabled): `/speckit.review.errors`
-   - **If types added/modified** (if enabled): `/speckit.review.types`
+   - **Always applicable** (if enabled): `/speckit.review.code` (crash sites, memory, threading, security, SwiftUI performance, accessibility)
+   - **If public/`package` API, protocols, view models/reducers, navigation, dependency wiring, `Package.swift` targets, `Codable`/SwiftData/Core Data models, `UserDefaults`/Keychain keys, URL schemes, entitlements or build settings changed** (if enabled): `/speckit.review.arch`
+   - **If test files changed** — `*Tests.swift`, anything under a `*Tests/` or `*UITests/` target, `__Snapshots__/` in `ignored_files`, `*.xctestplan` — **or production Swift changed with no accompanying test** (if enabled): `/speckit.review.tests`
+   - **If `///` DocC comments, `*.docc` catalogs or other comments/docs added or changed** (if enabled): `/speckit.review.comments`
+   - **If error handling changed** (`throws`, `do`/`catch`, `try?`, `Result`, error enums, error UI states) (if enabled): `/speckit.review.errors`
+   - **If types added/modified** (structs, classes, enums, protocols, actors, `Sendable`/isolation annotations) (if enabled): `/speckit.review.types`
    - **Always applicable** (if enabled): `/speckit.review.simplify` (polish, plus the ponytail review and audit whose cuts step 8 applies)
    - If an agent is disabled by config, note it in the final summary (e.g., "simplify: skipped (disabled in config)"). Degraded aspects (step 6c) are noted the same way.
 
@@ -242,10 +244,14 @@ Run a comprehensive review using multiple specialized agents, each focusing on a
    Otherwise, working **only** inside `<repo_root>` and **only** on files in the
    filtered `changed_files` list:
 
-   1. **Baseline the gates.** Discover the project's gates — the test, lint and
-      typecheck commands its `CLAUDE.md`/constitution, `package.json` scripts,
-      `Makefile`, `pyproject.toml` or CI workflow name — and run them once. Note which
-      pass. If none are discoverable, say so in the report.
+   1. **Baseline the gates.** Discover the project's gates — the build, test and
+      lint commands its `CLAUDE.md`/constitution, `Makefile`, `fastlane/Fastfile`,
+      scripts or CI workflow name (typically `xcodebuild build`/`test` with a
+      `-scheme` and a simulator `-destination`, `swift build`/`swift test` for a
+      package, `swiftlint`, `swiftformat --lint`) — and run them once. Note which
+      pass. If none are discoverable, say so in the report; if there is no macOS
+      toolchain or simulator to run them, say that too — an unbuildable baseline
+      cannot judge a cut.
    2. **Snapshot before editing.** Copy every file you are about to cut to a scratch
       directory first. Never revert with `git checkout`/`git restore`: in Modes A/B the
       working tree holds uncommitted work, and restoring from git would erase it.
@@ -364,36 +370,39 @@ Run a comprehensive review using multiple specialized agents, each focusing on a
 ## Agent Descriptions:
 
 **code**:
-- Checks project-specific guidelines (`.specify/memory/constitution.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, or equivalent) compliance
-- Detects bugs and traces data flow end to end
-- Security: injection, auth gaps, sensitive data exposure, input validation
-- Performance: N+1 queries, unbounded loops, resource cleanup
+- Checks project-specific guidelines (`.specify/memory/constitution.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, SwiftLint config, or equivalent) compliance
+- Crash sites: force unwraps, `try!`, `as!`, unsafe subscripts
+- Retain cycles (`[weak self]` where a cycle actually forms), main-thread UI, concurrency misuse
+- Security: Keychain vs `UserDefaults` for secrets, ATS exceptions, deep-link validation, sensitive data in logs
+- Performance: SwiftUI `body` recomputation, main-thread I/O, resource cleanup
+- Accessibility: labels, traits, Dynamic Type
 
 **arch**:
-- Reviews public interfaces, exported types, handler signatures
-- Flags breaking and subtle contract changes, backward compatibility
-- Checks consistency with existing patterns and dependency direction
+- Reviews public/`package` API, protocols, persisted and wire formats
+- SwiftUI / MVVM / TCA boundaries, `@Observable` state ownership, single source of truth
+- Dependency injection vs singletons; Swift package and module boundaries
+- Flags breaking and subtle contract changes (Codable keys, schema migrations, deployment target)
 - Proposes simpler designs
 
 **comments**:
-- Verifies comment accuracy vs code
-- Identifies comment rot
-- Checks documentation completeness
+- Verifies DocC `///` comments against signatures (`- Parameter`, `- Returns`, `- Throws`)
+- Identifies comment rot and broken symbol links
+- Checks public API documentation completeness
 
 **tests**:
-- Reviews behavioral test coverage
+- Reviews behavioral coverage in XCTest / Swift Testing
+- Async test correctness (no sleeps, awaited tasks), UI test robustness, snapshot hygiene
 - Identifies critical gaps
-- Evaluates test quality
 
 **errors**:
-- Finds silent failures
-- Reviews catch blocks
-- Checks error logging
+- Finds silent failures: swallowed `try?`, empty `catch`, dropped `Task` errors
+- Reviews `throws`/`Result`/typed throws and catch-clause specificity
+- Checks logging and user-facing error states
 
 **types**:
-- Analyzes type encapsulation
-- Reviews invariant expression
-- Rates type design quality
+- Value vs reference semantics, enums with associated values
+- `Sendable`, actor isolation, strict-concurrency cleanliness
+- Rates encapsulation and invariant expression/enforcement
 
 **simplify**:
 - Simplifies complex code and improves clarity

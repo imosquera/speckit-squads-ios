@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // Checks the git extension's one handler for `commit_exclude` churn
 // (scrub-commit-exclude.ts), its callers clean.ts and create-pr.ts, and auto-commit.ts,
-// which holds excluded paths out of its commit without scrubbing (issue #109). create-pr.ts runs against a local bare origin and a stubbed gh;
+// which holds excluded paths and untracked Xcode build/user state out of its commit
+// without scrubbing (issue #109). create-pr.ts runs against a local bare origin and a stubbed gh;
 // nothing leaves the machine.
 // Usage: bun test-commit-exclude.ts
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -45,7 +46,7 @@ function makeRepo(r: string, excl = "  - graphify-out", extra = "auto_commit:\n 
   git(r, "config", "user.name", "t");
   mkdirSync(`${r}/graphify-out`);
   write(`${r}/graphify-out/graph.json`, '{"nodes":[]}');
-  write(`${r}/app.txt`, "source");
+  write(`${r}/App.swift`, "source");
   git(r, "add", "-A");
   git(r, "commit", "-qm", "base");
   return r;
@@ -60,12 +61,12 @@ try {
   console.log("1. a modified excluded path is restored to HEAD; real work is untouched");
   let R = makeRepo(`${TMP}/r1`);
   write(`${R}/graphify-out/graph.json`, '{"nodes":[1,2,3]}');
-  write(`${R}/app.txt`, "edited");
+  write(`${R}/App.swift`, "edited");
   let s = scrub(R);
   check("scrub", "exit code", 0, s.rc);
   contains("scrub", "graphify-out", s.out);
   check("graph", "restored", '{"nodes":[]}', read(`${R}/graphify-out/graph.json`));
-  check("work", "preserved", "edited", read(`${R}/app.txt`));
+  check("work", "preserved", "edited", read(`${R}/App.swift`));
 
   console.log("2. untracked output under an excluded path is removed");
   R = makeRepo(`${TMP}/r2`);
@@ -77,22 +78,22 @@ try {
   console.log("3. a STAGED excluded path is unstaged, not committed");
   R = makeRepo(`${TMP}/r3`);
   write(`${R}/graphify-out/graph.json`, '{"nodes":[9]}');
-  write(`${R}/app.txt`, "edited");
+  write(`${R}/App.swift`, "edited");
   git(R, "add", "-A");
   scrub(R);
   check("staged", "index carries no excluded path", "", git(R, "diff", "--cached", "--name-only", "--", "graphify-out"));
-  check("staged", "real work still staged", "app.txt", git(R, "diff", "--cached", "--name-only", "--", "app.txt"));
+  check("staged", "real work still staged", "App.swift", git(R, "diff", "--cached", "--name-only", "--", "App.swift"));
 
   console.log("4. auto-commit leaves excluded paths on disk and out of the commit (issue #109)");
   R = makeRepo(`${TMP}/r4`, "  - graphify-out", "auto_commit:\n  default: true\n");
   write(`${R}/graphify-out/graph.json`, '{"nodes":[7]}');
   write(`${R}/graphify-out/new.json`, '{"cost":1}');
-  write(`${R}/app.txt`, "edited");
+  write(`${R}/App.swift`, "edited");
   git(R, "add", "-A"); // already staged by the flow
   runIn(R, ["bun", `${R}/${EXT}/scripts/ts/auto-commit.ts`, "after_plan"]);
   check("auto-commit", "modified graph survives", '{"nodes":[7]}', read(`${R}/graphify-out/graph.json`));
   check("auto-commit", "untracked graph output survives", '{"cost":1}', read(`${R}/graphify-out/new.json`));
-  check("auto-commit", "real work committed", "app.txt", git(R, "show", "--name-only", "--pretty=", "HEAD", "--", "app.txt"));
+  check("auto-commit", "real work committed", "App.swift", git(R, "show", "--name-only", "--pretty=", "HEAD", "--", "App.swift"));
   check("auto-commit", "commit carries no excluded path", "", git(R, "show", "--name-only", "--pretty=", "HEAD", "--", "graphify-out"));
 
   console.log("5. an empty commit_exclude list is a silent no-op");
@@ -114,10 +115,10 @@ try {
   R = makeRepo(`${TMP}/r7`);
   write(`${R}/graphify-out/graph.json`, '{"nodes":[5]}');
   check("require-clean", "excluded-only dirt exits 0", 0, scrub(R, "--require-clean").rc);
-  write(`${R}/app.txt`, "edited");
+  write(`${R}/App.swift`, "edited");
   s = scrub(R, "--require-clean");
   check("require-clean", "real dirt exits 2", 2, s.rc);
-  contains("require-clean", "app.txt", s.out);
+  contains("require-clean", "App.swift", s.out);
 
   console.log("8. a rebuild in flight is waited for, not raced (issue #55)");
   R = makeRepo(`${TMP}/r8`);
@@ -139,26 +140,26 @@ try {
   R = makeRepo(`${TMP}/r10`);
   mkdirSync(`${R}/graphify-out/2026-09-10`);
   write(`${R}/graphify-out/2026-09-10/cost.json`, '{"cost":1}');
-  write(`${R}/app.txt`, "edited");
+  write(`${R}/App.swift`, "edited");
   git(R, "add", "-A");
   scrub(R);
   check("new-addition", "index carries no excluded path", "", git(R, "diff", "--cached", "--name-only", "--", "graphify-out"));
   check("new-addition", "nothing left untracked", "", git(R, "ls-files", "--others", "--exclude-standard", "--", "graphify-out"));
   check("new-addition", "removed from disk", false, existsSync(`${R}/graphify-out/2026-09-10/cost.json`));
-  check("new-addition", "real work still staged", "app.txt", git(R, "diff", "--cached", "--name-only", "--", "app.txt"));
+  check("new-addition", "real work still staged", "App.swift", git(R, "diff", "--cached", "--name-only", "--", "App.swift"));
 
   console.log("11. auto-commit enabled: commits real work, holds out excluded paths, appends Closes #N");
   R = makeRepo(`${TMP}/r11`, "  - graphify-out", "auto_commit:\n  default: true\n");
   writeFeatureJson(R, "7");
   git(R, "add", "-A");
   git(R, "commit", "-qm", "link");
-  write(`${R}/app.txt`, "edited");
-  git(R, "add", "app.txt");
+  write(`${R}/App.swift`, "edited");
+  git(R, "add", "App.swift");
   write(`${R}/graphify-out/graph.json`, '{"nodes":[8]}');
   s = runIn(R, ["bun", `${R}/${EXT}/scripts/ts/auto-commit.ts`, "after_plan"]);
   check("auto-commit-on", "exit code", 0, s.rc);
   check("auto-commit-on", "message", "[Spec Kit] Auto-commit after plan\n\nCloses #7", git(R, "log", "-1", "--pretty=%B"));
-  check("auto-commit-on", "commit touches only app.txt", "app.txt", git(R, "show", "--name-only", "--pretty=", "HEAD"));
+  check("auto-commit-on", "commit touches only App.swift", "App.swift", git(R, "show", "--name-only", "--pretty=", "HEAD"));
 
   console.log("12. create-pr --draft: draft, #N title, Closes #N, labels copied minus autopilot:*, excluded history reset");
   R = makeRepo(`${TMP}/r12`);
@@ -173,7 +174,7 @@ try {
   write(`${R}/graphify-out/graph.json`, '{"nodes":["branch"]}');
   git(R, "add", "-A");
   git(R, "commit", "-qm", "spec and a stray graph");
-  write(`${R}/app.txt`, "feature");
+  write(`${R}/App.swift`, "feature");
   git(R, "commit", "-qam", "work");
 
   // Stub gh: logs argv as JSON lines; no PR exists yet; issue #7 has three labels.
@@ -213,6 +214,42 @@ if (k === "issue view") console.log("p1\\nautopilot:claimed\\nfeature");
   check("create-pr", "pushed to the bare origin as one squashed commit", "1", git(bare, "rev-list", "--count", "main..042-demo"));
   check("create-pr", "excluded path carries no branch change", "", git(bare, "diff", "--name-only", "main", "042-demo", "--", "graphify-out"));
   contains("create-pr squash", "Closes #7", git(bare, "log", "-1", "--pretty=%B", "042-demo"));
+
+  console.log("13. auto-commit never commits Xcode build output or per-user state, even with no .gitignore");
+  R = makeRepo(`${TMP}/r13`, "  []", "auto_commit:\n  default: true\n");
+  mkdirSync(`${R}/Pods`);
+  write(`${R}/Pods/Manifest.lock`, "committed by this team");
+  git(R, "add", "-A");
+  git(R, "commit", "-qm", "commit Pods/");
+  const junk = [
+    "DerivedData/App/Build/Intermediates.noindex/x.o",
+    "build/Release-iphoneos/App.app/Info.plist",
+    ".build/checkouts/Kit/Package.swift",
+    "App.xcodeproj/xcuserdata/me.xcuserdatad/xcschemes/xcschememanagement.plist",
+    "App.xcodeproj/project.xcworkspace/xcuserdata/me.xcuserdatad/UserInterfaceState.xcuserstate",
+    ".swiftpm/xcode/xcuserdata/me.xcuserdatad/xcschemes/xcschememanagement.plist",
+    "TestResults/Run 1.xcresult/Info.plist",
+    "Stray.xcuserstate",
+  ];
+  for (const f of junk) {
+    mkdirSync(join(R, f, ".."), { recursive: true });
+    write(join(R, f), "generated");
+  }
+  write(`${R}/Pods/Manifest.lock`, "bumped"); // tracked: the team's convention, still committed
+  write(`${R}/App.swift`, "edited");
+  git(R, "add", "--", "build"); // an agent already staged some of it
+  s = runIn(R, ["bun", `${R}/${EXT}/scripts/ts/auto-commit.ts`, "after_implement"]);
+  check("xcode", "exit code", 0, s.rc);
+  contains("xcode", "Held out Xcode build/user state", s.out);
+  const committed = git(R, "show", "--name-only", "--pretty=", "HEAD").split("\n").sort().join(",");
+  check("xcode", "commit carries only real work and tracked Pods/", "App.swift,Pods/Manifest.lock", committed);
+  check("xcode", "build output left on disk", "generated", read(`${R}/DerivedData/App/Build/Intermediates.noindex/x.o`));
+  check("xcode", "nothing staged afterwards", "", git(R, "diff", "--cached", "--name-only"));
+
+  console.log("14. only Xcode artifacts changed -> nothing to commit, exit 0");
+  s = runIn(R, ["bun", `${R}/${EXT}/scripts/ts/auto-commit.ts`, "after_implement"]);
+  check("xcode-only", "exit code", 0, s.rc);
+  contains("xcode-only", "Nothing to commit after after_implement", s.out);
 } finally {
   rmSync(TMP, { recursive: true, force: true });
 }

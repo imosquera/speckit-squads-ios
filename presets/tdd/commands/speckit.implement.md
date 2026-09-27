@@ -19,17 +19,51 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ### Before the first task — find the test command (MANDATORY)
 
-Read `plan.md` and the project's manifests (`package.json`, `pyproject.toml`,
-`go.mod`, `Cargo.toml`, `Makefile`, …) and settle on the **one command that runs
-the whole suite**. Run it once now and record the baseline: how many tests, and
-which ones (if any) already fail. Save the full output to a file outside the
-repo; Jev assist's `baseline` check reads it. A test failing at baseline is not yours to fix
-and must not be mistaken for your Red later.
+Read `plan.md` and the project's layout (`Package.swift`, `*.xcodeproj`,
+`*.xcworkspace`, `*.xctestplan`, `Makefile`, `project.yml`/`Project.swift`, …)
+and settle on the **one command that runs the whole suite**:
 
-If the project has no test harness, setting up the smallest one the ecosystem
-uses by default (`pytest`, `vitest`/`node --test`, `go test`, …) is the first
-piece of work. A change that is genuinely untestable (docs, pure config, a
-generated file) is exempt — say which files and why in the completion report.
+- **Swift package** (a `Package.swift` with test targets under `Tests/`):
+  `swift test`.
+- **App project** (Xcode project or workspace): list the schemes with
+  `xcodebuild -list`, pick an installed simulator with
+  `xcrun simctl list devices available`, then:
+
+  ```bash
+  xcodebuild test -scheme <Scheme> \
+    -destination 'platform=iOS Simulator,name=<device>'
+  ```
+
+  Add `-workspace <X>.xcworkspace` (or `-project <X>.xcodeproj`) when the
+  directory holds more than one, and `-testPlan <plan>` when the scheme uses
+  test plans. Pipe through `xcbeautify` if the project already uses it, but
+  keep the raw log: the failure lines are what Red is judged on.
+
+Run it once now and record the baseline: how many tests, and which ones (if
+any) already fail. Save the full output to a file outside the repo; Jev
+assist's `baseline` check reads it. A test failing at baseline is not yours to
+fix and must not be mistaken for your Red later.
+
+Tests are written with **Swift Testing** (`import Testing`, `@Test`,
+`#expect`, `#require`) or **XCTest** (`XCTestCase`, `func test…()`,
+`XCTAssert…`). Use whichever the target already uses; new targets default to
+Swift Testing. UI flows go in the `<App>UITests` target with `XCUIApplication`.
+
+To iterate on one test during Red and Green, narrow the run, then still run
+the whole suite before calling the step done (steps 3 and 5 below):
+
+- `swift test --filter <TestTarget>.<Suite>/<test>` (a regex over the test id).
+- `xcodebuild test … -only-testing:<TestTarget>/<Class>/<testMethod>` for
+  XCTest, or `-only-testing:<TestTarget>/<Suite>/<function>()` for Swift
+  Testing (the parentheses are part of the identifier).
+
+If the project has no test target, adding the smallest one is the first piece
+of work: a `.testTarget` in `Package.swift`, or a Unit Testing Bundle target
+in the Xcode project that hosts the app. A change that is genuinely
+untestable (asset catalogs, storyboards, `Info.plist`, entitlements, other
+pure configuration, a generated file) is exempt — say which files and why in
+the completion report. Prefer moving logic out of views and view controllers
+into types a unit test can reach over claiming an exemption for it.
 
 ### The cycle (MANDATORY for every task that changes behaviour)
 
@@ -45,11 +79,14 @@ the core flow dispatches (see *Subagents* below):
 > 2. **Red — write one test for one scenario.** Small, automated, and it would
 >    pass only if that scenario's behaviour exists.
 > 3. **Run the whole suite. The new test must fail, for the expected reason.**
->    Expected: an assertion that the behaviour is missing, or the symbol under
->    test not existing yet. Not expected: a syntax error, a broken import in the
->    test file, a misconfigured harness — fix those and run again, they are not
->    Red. A new test that **passes immediately** is flawed or the behaviour
->    already exists: find out which before going on. Never count it as Red.
+>    Expected: an assertion that the behaviour is missing (a failing
+>    `#expect` or `XCTAssert…`), or the symbol under test not existing yet
+>    (`cannot find 'X' in scope` in the test target only). Not expected: a
+>    compile error anywhere else, a missing `@testable import`, a scheme with
+>    no test action, a simulator that failed to boot — fix those and run
+>    again, they are not Red. A new test that **passes immediately** is flawed
+>    or the behaviour already exists: find out which before going on. Never
+>    count it as Red.
 >    Classify the result with **Jev assist** `red-reason` first.
 > 4. **Green — write the simplest code that passes the new test.** Hard-coding
 >    and inelegance are allowed; step 6 cleans them up. Add no code beyond what

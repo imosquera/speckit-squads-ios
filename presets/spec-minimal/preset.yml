@@ -6,7 +6,7 @@ preset:
   version: "2.0.0"
   description: "Wraps /speckit-specify and /speckit-plan to enforce a strictly minimal artifact set. Specify drops Assumptions, Key Entities, and Success Criteria. Plan holds the feature directory to spec.md, plan.md, tasks.md, and optionally quickstart.md and research.md — data-model.md and contracts/ are forbidden by a mandatory prompt rule and guaranteed by a self-healing post-flight enforcer that folds any stray artifact into plan.md and removes it. See presets/spec-minimal/README.md for the canonical mechanism."
   author: "imosquera"
-  repository: "https://github.com/imosquera/speckit-squads"
+  repository: "https://github.com/imosquera/speckit-squads-ios"
   license: "MIT"
 
 requires:

@@ -22,7 +22,19 @@ This extension provides Git operations as an optional, self-contained module. It
   the base branch, since the working tree says nothing about what already landed
   in the branch's history
 - **GitHub issue sync** — when a tracking issue is linked, its body is re-rendered from `spec.md` after every `/speckit-specify` (title untouched) and its `p0`..`p3` / `bug`|`feature` triage labels are kept current; skipped cleanly when there is no linked issue
-- **Auto-commit** after core commands (configurable per-command with custom messages)
+- **Auto-commit** after core commands (configurable per-command with custom messages).
+  Xcode build output and per-user state (`DerivedData/`, `build/`, `.build/`,
+  `xcuserdata/`, `*.xcuserstate`, `*.xcresult`, untracked `Pods/`; the list is
+  `XCODE_ARTIFACTS` in `git-common.ts`) is always held out of the commit, even when the
+  project's `.gitignore` misses it. Paths already committed (a team that commits `Pods/`)
+  are left alone. `initialize-repo.ts` writes the same list into a new repo's `.gitignore`
+- **Worktree dependency bootstrap**: `install-deps.ts` runs after a worktree is created
+  (best effort, always exit 0, `SPECKIT_SKIP_INSTALL=1` skips it). It runs `pod install`
+  where the base checkout has `Pods/`, `carthage bootstrap --use-xcframeworks` where it
+  has `Carthage/Build/`, `swift package resolve` for a Swift package, and
+  `xcodebuild -resolvePackageDependencies` for an app whose `.xcodeproj`/`.xcworkspace`
+  tracks a `Package.resolved`. DerivedData is keyed by the checkout path, so a new
+  worktree otherwise starts with no resolved packages
 
 ## Commands
 

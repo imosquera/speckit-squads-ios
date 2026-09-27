@@ -1,5 +1,5 @@
 ---
-description: "Composable wrapper for /speckit-plan that, when the spec declares user-facing actions, requires a `## Button System` section in plan.md — component reuse, color roles, states and contrast, touch targets, and placement — checked deterministically after the plan is written."
+description: "Composable wrapper for /speckit-plan that, when the spec declares user-facing actions, requires a `## Button System` section in plan.md in SwiftUI / Apple HIG terms — ButtonStyle reuse, styles and tint, pressed/disabled states and haptics, 44×44pt hit targets, Dynamic Type and accessibility labels, and toolbar/bottom-bar placement — checked deterministically after the plan is written."
 ---
 
 ## Wrapper Layer
@@ -8,8 +8,10 @@ This preset wraps the stock `/speckit-plan` command (and any inner wrapper the
 core flow expands to, e.g. from another chained `speckit.plan` preset).
 
 The spec decided **which** actions exist and what they say
-(`## Actions & Buttons`). This layer decides **how they are built** so they look
-and behave the same as every other button in the product.
+(`## Actions & Buttons`). This layer decides **how they are built in SwiftUI**
+so they look and behave the same as every other button in the app. There is no
+hover on iPhone and no CSS: states come from the button style's
+configuration and the environment.
 
 ### Button System (MANDATORY)
 
@@ -28,41 +30,62 @@ Read `## Actions & Buttons` in `spec.md` first.
   spec's screens. Exit 0 with `"skip"`, exit 3, or any other exit → add nothing
   and say so. Either way the check passes; quote the `record` line in your
   report.
-- Otherwise `plan.md` MUST carry a `## Button System` section with these five
+- Otherwise `plan.md` MUST carry a `## Button System` section with these six
   markers, each populated:
 
 ```markdown
 ## Button System
 
-**Component:** reuse `Button` from `src/ui/Button.tsx` (variants primary,
-secondary, tertiary, destructive). No new button style.
-**Color roles:** primary = brand color; secondary = outlined neutral;
-destructive = danger red; disabled = muted fill and text, not just lowered
-opacity. The same color means the same role on every screen.
-**States:** default, hover, focus-visible, active, disabled, loading. Every
-state keeps label text ≥ 4.5:1 against its fill and the button ≥ 3:1 against
-its container.
-**Touch targets:** 44×44 minimum hit area, icon-only buttons included; ≥ 8px
-between adjacent targets.
-**Placement:** the primary sits where the task ends: bottom of the form,
-trailing edge of a button pair, in the platform's dialog order. Actions sit
-next to what they act on, never floating in a corner. A sticky mobile CTA never
-covers content.
+**Component:** reuse the app's button styles in
+`Sources/DesignSystem/ButtonStyles.swift` (system `.borderedProminent`,
+`.bordered`, `.borderless`, plus `PillButtonStyle`). No new `ButtonStyle`.
+UIKit screens use `UIButton.Configuration` (`.filled()`, `.tinted()`,
+`.plain()`) with the same mapping.
+**Styles & tint:** primary = `.borderedProminent` with the app's `.tint`
+(accent color asset); secondary = `.bordered`; tertiary = `.borderless`;
+destructive = `role: .destructive` (system red, never a hard-coded red).
+Semantic colors only (`Color.accentColor`, `.primary`, `.secondary`), so
+light, dark, and Increase Contrast all work. The same style means the same role
+on every screen.
+**States & feedback:** default, pressed (`configuration.isPressed`, dim or
+scale), disabled (`.disabled(_:)`; the system dims it, don't hand-roll
+opacity), loading (`ProgressView` in place of the label, button disabled).
+No pointer-only states. Label text ≥ 4.5:1 against its fill in every state.
+`.sensoryFeedback(.success, trigger:)` on completing save; `.warning` before
+a destructive confirm; none on ordinary taps.
+**Hit targets:** 44×44pt minimum, icon-only buttons included, via
+`.frame(minWidth: 44, minHeight: 44)` plus `.contentShape(Rectangle())` when
+the visible glyph is smaller; ≥ 8pt between adjacent targets.
+**Accessibility:** labels use text styles (`.body`, `.headline`) and scale
+with Dynamic Type through AX5; no fixed heights that clip, and a horizontal
+button pair stacks vertically at accessibility sizes (`ViewThatFits`).
+Icon-only buttons get `.accessibilityLabel`; `Label("Share", systemImage:)`
+over a bare `Image`.
+**Placement:** `Save` in `.confirmationAction`, `Cancel` in
+`.cancellationAction`, the screen's main command in `.primaryAction`. A
+full-width primary sits in `.safeAreaInset(edge: .bottom)` within thumb reach
+and never covers content. Destructive confirms use `confirmationDialog` with a
+`role: .cancel` button; row deletes are swipe actions with undo.
 ```
 
 Rules behind the markers:
 
-- **Reuse before you add.** Name the existing button component and the variant
-  each spec row maps to. A new variant or one-off style needs a stated reason in
-  `plan.md`. "This page is different" is not a reason.
-- **Consistency across screens.** Shape, radius, font size, weight,
-  capitalization, and padding match the existing system. A primary in a modal
-  looks like a primary on the dashboard.
-- **Links stay links.** Spec rows of kind `link` render as text links (underline
-  or link style, no container), never button-shaped.
+- **Reuse before you add.** Name the existing `ButtonStyle` (or system style)
+  and the style each spec row maps to. A new style or one-off modifier stack
+  needs a stated reason in `plan.md`. "This screen is different" is not a
+  reason.
+- **Consistency across screens.** Shape (`.buttonBorderShape`), control size
+  (`.controlSize`), font, and padding match the existing system. A primary in
+  a sheet looks like a primary on the home screen.
+- **Links stay links.** Spec rows of control `NavigationLink` render as list
+  rows with a disclosure indicator or plain tinted text; `Link` rows open
+  Safari or the target app. Neither is dressed as the screen's primary button.
 - **Destructive safeguards are designed here.** For every spec row with a
-  safeguard, the plan names the confirm dialog, type-to-confirm field, or undo
-  affordance and where it lives.
+  safeguard, the plan names the `confirmationDialog`/`alert`, type-to-confirm
+  field, or undo affordance (e.g. an undo toast or `UndoManager`) and where it
+  lives.
+- **Hover is not a state on iPhone.** Mention it only for iPad pointer support
+  (`.hoverEffect`); the checker notes it but does not fail.
 
 ### Core Flow
 
@@ -81,8 +104,9 @@ The check is read-only. Handle the exit code:
 
 - **`0`**: the plan carries a populated `## Button System`, or the spec
   declares no actions. Report success.
-- **`1`**: stderr names the missing section, the empty marker, or a touch
-  target under 44×44. Fix `plan.md` and re-run. Do not report success while it
+- **`1`**: stderr names the missing section, the empty marker, a hit
+  target under 44×44pt, or an Accessibility marker that never mentions
+  Dynamic Type. Fix `plan.md` and re-run. Do not report success while it
   fails.
 - **`2`**: bad usage, or no `plan.md` in the feature directory. Fix the call
   and re-run.

@@ -4,9 +4,9 @@ preset:
   id: "tdd"
   name: "Test-Driven Development"
   version: "1.2.0"
-  description: "Wraps /speckit-implement in the Red-Green-Refactor cycle: list the scenarios, then for each one write a failing test, watch it fail for the expected reason, write the simplest code that passes, and refactor with the suite green. Gated at the end by a full test run and check-tests-accompany.ts, which fails when production code changed with no test change. Optional Jev assist (the shared jev.ts helper, @typesafe-ai/sdk installed lazily on first use) answers the per-cycle judgment calls when TYPESAFE_API_KEY is set; SPECKIT_JEV=off disables it. See presets/tdd/README.md."
+  description: "Wraps /speckit-implement in the Red-Green-Refactor cycle for iOS/Swift projects: list the scenarios, then for each one write a failing test, watch it fail for the expected reason, write the simplest code that passes, and refactor with the suite green. Swift-first test runs: `swift test` for packages, `xcodebuild test` on an iOS Simulator for app projects, narrowed with --filter / -only-testing: during Red and Green; Swift Testing or XCTest. Gated at the end by a full test run and check-tests-accompany.ts, which fails when Swift, Objective-C or Metal source changed with no change under a Tests/, <Target>Tests/ or <Target>UITests/ target (resources, plists, storyboards, project files and Package.swift never demand a test). Optional Jev assist (the shared jev.ts helper, @typesafe-ai/sdk installed lazily on first use) answers the per-cycle judgment calls when TYPESAFE_API_KEY is set; SPECKIT_JEV=off disables it. See presets/tdd/README.md."
   author: "imosquera"
-  repository: "https://github.com/imosquera/speckit-squads"
+  repository: "https://github.com/imosquera/speckit-squads-ios"
   license: "MIT"
 
 requires:

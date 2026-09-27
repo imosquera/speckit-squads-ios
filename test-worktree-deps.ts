@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
-// install-deps.ts installs a fresh worktree's dependencies at creation and stays out
-// of the way: no manifest is a silent no-op, a failing package manager never fails the
-// caller, and a directory the base checkout never installed is never installed (#51).
+// install-deps.ts installs a fresh iOS worktree's dependencies (CocoaPods, Carthage,
+// SwiftPM packages, an Xcode app's SwiftPM graph) at creation and stays out of the way:
+// no manifest is a silent no-op, a failing tool never fails the caller, and Pods/ or
+// Carthage/Build/ the base checkout never installed is never installed (#51).
 // Usage: ./test-worktree-deps.ts
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -52,7 +53,8 @@ function makeRepo(name: string, files: Record<string, string> = {}): string {
 }
 // slugify: a repo dir may contain a space, a branch name may not
 const addWt = (repo: string) => (git(repo, "worktree", "add", "-q", "-b", `feat-${basename(repo).replaceAll(" ", "-")}`, `${repo}.wt`), `${repo}.wt`);
-const nodeModules = (repo: string, ...dirs: string[]) => dirs.forEach((d) => mkdirSync(`${repo}/${d}/node_modules`, { recursive: true }));
+// Stand-in for what the base checkout installed: Pods/, Carthage/Build/, .build/ ...
+const installed = (repo: string, ...dirs: string[]) => dirs.forEach((d) => mkdirSync(`${repo}/${d}`, { recursive: true }));
 
 // A fake package manager that records its invocations, or fails on demand.
 function fakeBin(dir: string, name: string, code: number): void {
@@ -68,7 +70,10 @@ function run(args: string[], env: Record<string, string> = {}): { out: string; r
   return { out: (r.stdout.toString() + r.stderr.toString()).replace(/\n+$/, ""), rc: r.exitCode ?? -1 };
 }
 const withBin = (bin: string) => ({ PATH: `${bin}:${process.env.PATH}` });
-const PKG = { "package.json": '{"name":"x"}\n' };
+const PKG = { "Package.swift": "// swift-tools-version:5.9\n" };
+const PODS = { Podfile: "platform :ios, '17.0'\n", "Podfile.lock": "PODFILE CHECKSUM: x\n" };
+const APP_RESOLVED = (container: string) => ({ [`${container}/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`]: "{}\n" });
+const lines = () => calls().split("\n").filter(Boolean);
 
 try {
   console.log("1. no manifest anywhere -> silent no-op, exit 0");
@@ -77,50 +82,55 @@ try {
   check("no-manifest", "exit code", "0", String(r.rc));
   check("no-manifest", "output", "", r.out);
 
-  console.log("2. manifest the base checkout never installed -> not installed here");
-  WT = addWt(makeRepo("uninstalled", { ...PKG, "package-lock.json": "" }));
+  console.log("2. manifests whose deps the base checkout never installed -> not installed here");
+  WT = addWt(makeRepo("uninstalled", { ...PODS, ...PKG, "Cartfile.resolved": "" }));
   resetCalls();
-  fakeBin(`${TMP}/bin2`, "npm", 0);
+  for (const t of ["pod", "swift", "carthage"]) fakeBin(`${TMP}/bin2`, t, 0);
   r = run([WT], withBin(`${TMP}/bin2`));
   check("uninstalled", "exit code", "0", String(r.rc));
   check("uninstalled", "ran no installer", "", calls());
 
-  console.log("3. base has node_modules -> the lockfile picks the package manager");
+  console.log("3. base has Pods/ -> pod install, then the app's packages; a tracked package lockfile resolves");
   let REPO = makeRepo("installed", {
-    ...PKG,
-    "package-lock.json": "",
-    "web/package.json": '{"name":"w"}\n',
-    "web/pnpm-lock.yaml": "",
-    "docs/package.json": '{"name":"d"}\n',
+    ...PODS,
+    ...APP_RESOLVED("App.xcodeproj"),
+    "Kit/Package.swift": "// swift-tools-version:5.9\n",
+    "Kit/Package.resolved": "{}\n",
+    "Legacy/Podfile.lock": "", // base never ran pod install here
   });
-  nodeModules(REPO, ".", "web"); // docs/ never installed
+  installed(REPO, "Pods");
   WT = addWt(REPO);
   resetCalls();
-  fakeBin(`${TMP}/bin3`, "npm", 0);
-  fakeBin(`${TMP}/bin3`, "pnpm", 0);
+  for (const t of ["pod", "swift", "xcodebuild"]) fakeBin(`${TMP}/bin3`, t, 0);
   r = run([WT], withBin(`${TMP}/bin3`));
   check("installed", "exit code", "0", String(r.rc));
-  contains("root install", `${WT} npm ci`, calls());
-  contains("workspace install", `${WT}/web pnpm install --frozen-lockfile`, calls());
-  absent("docs (base never installed it)", `${WT}/docs`, calls());
+  contains("root pods", `${WT} pod install`, calls());
+  contains("app packages", `${WT} xcodebuild -resolvePackageDependencies -project App.xcodeproj`, calls());
+  const root = lines().filter((l) => l.startsWith(`${WT} `));
+  check("root order", "pod install before xcodebuild", "pod,xcodebuild", root.map((l) => l.slice(WT.length + 1).split(" ")[0]).join(","));
+  contains("package", `${WT}/Kit swift package resolve`, calls());
+  absent("Legacy (base never installed it)", `${WT}/Legacy`, calls());
   contains("summary", "installed:", r.out);
 
-  console.log("4. a failing install reports but does not fail the caller");
-  REPO = makeRepo("failing", { ...PKG, "package-lock.json": "" });
-  nodeModules(REPO, ".");
+  console.log("4. a failing install reports, stops that directory, and does not fail the caller");
+  REPO = makeRepo("failing", { ...PODS, ...APP_RESOLVED("App.xcodeproj") });
+  installed(REPO, "Pods");
   WT = addWt(REPO);
-  fakeBin(`${TMP}/bin4`, "npm", 1);
+  resetCalls();
+  fakeBin(`${TMP}/bin4`, "pod", 1);
+  fakeBin(`${TMP}/bin4`, "xcodebuild", 0);
   r = run([WT], withBin(`${TMP}/bin4`));
   check("failing", "exit code", "0", String(r.rc));
-  contains("failing", "FAILED in", r.out);
+  contains("failing", "FAILED in .: pod install", r.out);
+  absent("failing (later step skipped)", "xcodebuild", calls());
 
-  console.log("5. package manager missing from PATH -> named, not run, still exit 0");
-  REPO = makeRepo("notool", { ...PKG, "bun.lockb": "" });
-  nodeModules(REPO, ".");
+  console.log("5. tool missing from PATH -> named, not run, still exit 0");
+  REPO = makeRepo("notool", { Cartfile: 'github "x/y"\n', "Cartfile.resolved": 'github "x/y" "1.0"\n' });
+  installed(REPO, "Carthage/Build");
   WT = addWt(REPO);
   r = run([WT], { PATH: "/nonexistent-bin-dir:/usr/bin:/bin" });
   check("no-tool", "exit code", "0", String(r.rc));
-  contains("no-tool", "bun", r.out);
+  contains("no-tool", "carthage", r.out);
 
   console.log("6. SPECKIT_SKIP_INSTALL=1 skips everything");
   resetCalls();
@@ -138,34 +148,40 @@ try {
 
   console.log("8. the base checkout itself is never installed into");
   resetCalls();
-  fakeBin(`${TMP}/bin8`, "npm", 0);
+  for (const t of ["pod", "swift", "xcodebuild"]) fakeBin(`${TMP}/bin8`, t, 0);
   r = run([`${TMP}/installed`], withBin(`${TMP}/bin8`));
   check("base-checkout", "exit code", "0", String(r.rc));
   check("base-checkout", "ran no installer", "", calls());
 
-  console.log("9. a pnpm workspace child is installed by its root, never on its own");
-  REPO = makeRepo("workspace", { ...PKG, "pnpm-lock.yaml": "", "packages/api/package.json": '{"name":"api"}\n' });
-  nodeModules(REPO, ".", "packages/api");
+  console.log("9. a workspace is resolved once, with its shared scheme; committed Pods/ are not reinstalled");
+  REPO = makeRepo("workspace", {
+    ...PODS,
+    "Pods/Manifest.lock": "PODFILE CHECKSUM: x\n", // this team commits Pods/
+    "App.xcworkspace/contents.xcworkspacedata": "<Workspace/>\n",
+    "App.xcworkspace/xcshareddata/swiftpm/Package.resolved": "{}\n",
+    ...APP_RESOLVED("App.xcodeproj"),
+    "App.xcodeproj/xcshareddata/xcschemes/App.xcscheme": "<Scheme/>\n",
+  });
   WT = addWt(REPO);
   resetCalls();
-  fakeBin(`${TMP}/bin9`, "pnpm", 0);
-  fakeBin(`${TMP}/bin9`, "npm", 0);
+  for (const t of ["pod", "xcodebuild"]) fakeBin(`${TMP}/bin9`, t, 0);
   r = run([WT], withBin(`${TMP}/bin9`));
   check("workspace", "exit code", "0", String(r.rc));
-  contains("workspace root", `${WT} pnpm install --frozen-lockfile`, calls());
-  absent("workspace child", "packages/api", calls());
-  check("workspace", "installs once", "1", String(calls().split("\n").filter(Boolean).length));
+  contains("workspace", `${WT} xcodebuild -resolvePackageDependencies -workspace App.xcworkspace -scheme App`, calls());
+  absent("committed Pods", "pod install", calls());
+  check("workspace", "resolves once", "1", String(lines().length));
 
-  console.log("10. a base checkout whose path contains a space still resolves");
-  REPO = makeRepo("spaced repo", { ...PKG, "package-lock.json": "" });
-  nodeModules(REPO, ".");
+  console.log("10. paths with spaces: the base checkout still resolves, a spaced container stays one argument");
+  REPO = makeRepo("spaced repo", { ...PKG, ...APP_RESOLVED("My App.xcodeproj") });
+  installed(REPO, ".build");
   WT = addWt(REPO);
   resetCalls();
-  fakeBin(`${TMP}/bin10`, "npm", 0);
+  for (const t of ["swift", "xcodebuild"]) fakeBin(`${TMP}/bin10`, t, 0);
   r = run([WT], withBin(`${TMP}/bin10`));
   check("spaced", "exit code", "0", String(r.rc));
   absent("spaced", "could not resolve the base checkout", r.out);
-  contains("spaced", `${WT} npm ci`, calls());
+  contains("spaced", `${WT} swift package resolve`, calls());
+  contains("spaced", `${WT} xcodebuild -resolvePackageDependencies -project My App.xcodeproj`, calls());
 } finally {
   rmSync(TMP, { recursive: true, force: true });
 }

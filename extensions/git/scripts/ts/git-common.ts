@@ -266,3 +266,59 @@ export function commitExcludes(root?: string): string[] {
   }
   return out;
 }
+
+/**
+ * Xcode / SwiftPM / CocoaPods build output and per-user IDE state. Never committed:
+ * initialize-repo.ts writes these into a new project's .gitignore, and auto-commit.ts
+ * holds any that are still untracked (or newly staged) out of its commit, so a project
+ * whose .gitignore misses one still never sweeps DerivedData/ onto a branch.
+ * Already-tracked paths are left alone (a team that commits Pods/ keeps doing so).
+ */
+export const XCODE_ARTIFACTS = [
+  "DerivedData/",
+  "build/",
+  ".build/",
+  "xcuserdata/",
+  "*.xcuserstate",
+  ".swiftpm/xcode/xcuserdata/",
+  "Pods/",
+  "*.xcresult",
+] as const;
+
+const ARTIFACT_DIRS = new Set(["DerivedData", "build", ".build", "xcuserdata", "Pods"]);
+
+/**
+ * The shortest prefix of `path` (repo-relative, `/`-separated) that is an
+ * XCODE_ARTIFACTS entry, e.g. "App/DerivedData/x/y.o" -> "App/DerivedData". null if none.
+ */
+export function xcodeArtifactRoot(path: string): string | null {
+  const segs = path.split("/").filter(Boolean);
+  const i = segs.findIndex((s, k) => ARTIFACT_DIRS.has(s) || s.endsWith(".xcresult") || (k === segs.length - 1 && s.endsWith(".xcuserstate")));
+  return i < 0 ? null : segs.slice(0, i + 1).join("/");
+}
+
+/**
+ * Xcode artifacts about to be swept up by `git add .` in `root`: untracked ones plus
+ * ones staged as new files, collapsed to their artifact root. A root with files already
+ * committed at HEAD is never listed.
+ */
+export function pendingXcodeArtifacts(root: string): string[] {
+  const untracked = (git(root, "ls-files", "--others", "--exclude-standard", "-z") ?? "").split("\0");
+  const added = (git(root, "diff", "--cached", "--name-only", "--diff-filter=A", "-z") ?? "").split("\0");
+  const roots = new Set([...untracked, ...added].map((p) => (p ? xcodeArtifactRoot(p) : null)));
+  roots.delete(null);
+  // A root HEAD already tracks (a team that commits Pods/) is that team's convention.
+  const committed = (r: string) => !!git(root, "ls-tree", "-r", "--name-only", "HEAD", "--", r);
+  return [...roots].filter((r): r is string => r !== null && !committed(r)).sort();
+}
+
+/** Append any missing XCODE_ARTIFACTS lines to `<worktree>/.gitignore`. Idempotent. */
+export function ignoreXcodeArtifacts(worktree: string): void {
+  const gitignore = `${worktree}/.gitignore`;
+  const current = readText(gitignore) ?? "";
+  const have = new Set(current.split("\n").map((l) => l.trim()));
+  const missing = XCODE_ARTIFACTS.filter((p) => !have.has(p));
+  if (!missing.length) return;
+  const sep = current && !current.endsWith("\n") ? "\n" : "";
+  appendFileSync(gitignore, `${sep}# Xcode / SwiftPM / CocoaPods build output and per-user state.\n${missing.join("\n")}\n`);
+}

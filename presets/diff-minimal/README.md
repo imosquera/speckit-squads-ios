@@ -118,7 +118,7 @@ never acceptable is breadth nobody accounted for.
 adds one, and the two answer different questions. Keeping them separate lets a
 project take the section stripper without the mandate, or the mandate without
 the stripper. Composition is already supported — `spec-minimal` and
-`spec-ui-preview` stack today, and all three sort at the default priority 10, so
+`library-research` stack today, and all three sort at the default priority 10, so
 they compose as `wrap` layers in id order with no ordering contract to maintain.
 
 The stripper never touches either of the two sections this preset adds, so the

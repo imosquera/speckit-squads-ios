@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 // Git extension: initialize-repo.ts
 // Initialize a Git repository with an initial commit. All messages go to stderr.
-// Customizable: replace this script to add .gitignore templates, default branch
+// Customizable: replace this script to add other .gitignore templates, default branch
 // config, git-flow, LFS, signing, etc.
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { ignoreFeatureJson } from "./git-common.ts";
+import { ignoreFeatureJson, ignoreXcodeArtifacts } from "./git-common.ts";
 
 function findProjectRoot(start: string): string | null {
   for (let dir = start; dir !== "/"; dir = dirname(dir)) {
@@ -57,6 +57,8 @@ function step(label: string, ...cmd: string[]): void {
 step("git init", "git", "init", "-q");
 // Ignore per-worktree feature identity from the first commit (issue #33).
 ignoreFeatureJson(repoRoot);
+// Keep DerivedData/, xcuserdata/, Pods/, *.xcresult ... out of the first commit.
+ignoreXcodeArtifacts(repoRoot);
 step("git add", "git", "add", ".");
 step("git commit", "git", "commit", "--allow-empty", "-q", "-m", commitMsg);
 

@@ -40,39 +40,68 @@ Run the core plan flow first so that `plan.md` exists before research begins.
 
 1. **Scan `plan.md` for technical unknowns.** Look for components the plan
    describes building from scratch that commonly have mature off-the-shelf
-   solutions — auth, session/token handling, parsing/validation, queues,
-   retries/backoff, rate limiting, caching, diffing, scheduling, PDF/image
-   processing, i18n, payments, and similar. Ignore plain internal business
-   logic (domain rules specific to this feature) — that is never a research
-   target.
+   solutions on iOS — networking/HTTP clients, request retries/backoff,
+   Keychain credential storage, sign-in/OAuth flows, JSON/data parsing,
+   image loading/caching, local persistence/offline sync, background work,
+   analytics/crash reporting, logging, feature flags, in-app purchases,
+   localization, and similar. Ignore plain internal business logic (domain
+   rules specific to this feature) — that is never a research target.
 
    If the plan has no such surface area, write a `research.md` containing
    only `N/A — no build-it-yourself surface area identified in this plan.`,
    skip straight to Completion Report, and do not modify `plan.md`.
 
 2. **Research each unknown using real web search** (`WebSearch` / `WebFetch`
-   tools) — do not rely on memorized/training-data knowledge of the library
+   tools) — do not rely on memorized/training-data knowledge of the Swift
    ecosystem, since versions, maintenance status, and best-fit choice change
-   over time. For each unknown, find 1-3 candidate libraries and check:
-   - still maintained (recent releases/commits, not archived)
-   - license compatible with the project (avoid GPL/AGPL for permissively
-     licensed projects unless the plan already accepts that)
-   - fits the project's existing language/runtime and dependencies (check
-     `plan.md` and the repo's manifest files, e.g. `package.json`,
-     `pyproject.toml`, `go.mod`, before recommending)
-   - genuinely reduces scope versus hand-rolling — a library that only
-     covers a sliver of the unknown, or adds more integration complexity
-     than it removes, is not a win
+   over time. Walk this ladder for each unknown and stop at the first rung
+   that genuinely covers it:
+
+   1. **Apple first-party frameworks** — check Apple Developer documentation
+      (developer.apple.com) first: Foundation, SwiftUI, Observation,
+      SwiftData, Core Data, CryptoKit, AuthenticationServices,
+      BackgroundTasks, URLSession, Security (Keychain Services), OSLog,
+      StoreKit, Network, and similar. A native framework available at the
+      project's deployment target beats any third-party dependency.
+   2. **Apple/Swift open-source packages** — e.g. `apple/swift-*` and
+      `swiftlang/*` packages (swift-collections, swift-async-algorithms,
+      swift-log, etc.).
+   3. **Third-party Swift packages** — search Swift Package Index
+      (swiftpackageindex.com) for 1-3 candidates.
+
+   For each third-party or open-source candidate, check:
+   - **platform support** — supports iOS at or below the project's minimum
+     deployment target (Swift Package Index compatibility matrix,
+     `platforms:` in the package's `Package.swift`)
+   - **Swift 6 readiness** — builds under Swift 6 language mode / strict
+     concurrency checking, with `Sendable`-correct public API (Swift Package
+     Index reports data-race-safety results)
+   - **maintained** — recent releases/commits, not archived, issues and PRs
+     get responses
+   - **license** compatible with the project (avoid GPL/AGPL for
+     permissively licensed or App Store–distributed apps unless the plan
+     already accepts that)
+   - **SPM-installable** — ships a `Package.swift`; avoid CocoaPods- or
+     Carthage-only libraries
+   - **binary size impact** — note heavy dependency trees or large
+     binaries; app size matters on iOS
+   - **fits the project** — check `plan.md`, the project's `Package.swift`,
+     and the Xcode project's package dependencies (`Package.resolved`)
+     before recommending, so you don't add a second library for something
+     already covered
+   - **genuinely reduces scope** versus hand-rolling or using the native
+     framework — a library that only covers a sliver of the unknown, or adds
+     more integration complexity than it removes, is not a win
 
 3. **Write `research.md`** in the feature directory with one section per
    unknown researched:
 
    ```markdown
-   ## <Unknown, e.g. "Rate limiting">
+   ## <Unknown, e.g. "Image caching">
 
-   **Candidates considered:** <library> (<one-line why>), <library> (<one-line why>)
-   **Recommendation:** use `<library>` | build custom
-   **Why:** <2-3 sentences — maintenance status, fit, scope saved or why nothing fit>
+   **Candidates considered:** <framework or package> (<one-line why>), <package> (<one-line why>)
+   **Recommendation:** use `<framework or package>` | build custom
+   **Why:** <2-3 sentences — native vs. third-party, iOS target / Swift 6 support, maintenance, size, scope saved or why nothing fit>
    ```
 
    `research.md` is a valid artifact under this repo's presets — it is
@@ -81,7 +110,8 @@ Run the core plan flow first so that `plan.md` exists before research begins.
 
 4. **Revise `plan.md` in place** for every unknown where the recommendation
    is "use `<library>`": replace the custom-build description with a note
-   that the feature will use the library instead, naming it and linking to
+   that the feature will use the framework or package instead, naming it
+   (and, for a package, the SPM dependency to add) and linking to
    `research.md` for the rationale (e.g. `See research.md — using <library>
    instead of a custom implementation.`). Do not touch sections for unknowns
    where the recommendation was "build custom" or where no unknown was found.

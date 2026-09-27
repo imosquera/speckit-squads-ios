@@ -9,7 +9,7 @@ Wraps `/speckit-specify` and `/speckit-plan` to trim the generated artifacts wit
 | `/speckit-specify` | `spec.md` with all sections | `spec.md` minus **Assumptions**, **Key Entities**, and **Success Criteria** |
 | `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | `spec.md`, `plan.md`, `tasks.md`, `checklists/`, optionally `quickstart.md` and `research.md` — `data-model.md` and `contracts/` are forbidden |
 
-This preset does one thing: artifact minimalism. The inline HTML UI preview lives in the separate `spec-ui-preview` preset, and GitHub issue sync lives in the `git` extension (`/speckit-git-issue`, on the `after_specify` hook).
+This preset does one thing: artifact minimalism. GitHub issue sync lives in the `git` extension (`/speckit-git-issue`, on the `after_specify` hook).
 
 ## How enforcement works
 
@@ -48,7 +48,7 @@ specify preset add --dev ~/Code/speckit-squads/presets/spec-minimal
 
 `spec-minimal` composes with the stock `speckit.specify` and `speckit.plan` flows instead of replacing them, so it stacks cleanly with implement-focused presets such as `worktree-isolation` and `tdd`.
 
-Presets that wrap the *same* command nest rather than collide: the engine orders wrappers by priority ascending, then alphabetically by preset id, and each wrapper's core-flow seam expands to the next one in. That makes `spec-minimal` + `spec-ui-preview` + `library-research` a valid stack — each layer sees the stock flow (plus the inner layers) at its seam.
+Presets that wrap the *same* command nest rather than collide: the engine orders wrappers by priority ascending, then alphabetically by preset id, and each wrapper's core-flow seam expands to the next one in. That makes `spec-minimal` + `diff-minimal` + `library-research` a valid stack — each layer sees the stock flow (plus the inner layers) at its seam.
 
 ## When NOT to use
 

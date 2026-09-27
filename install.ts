@@ -61,14 +61,11 @@ if (Bun.spawnSync([BUN, join(REPO_DIR, "check-cli-usage.ts")], { stdio: ["inheri
 // by (priority ASC, id ASC); the highest-precedence `wrap` composes outermost, and
 // the nearest `replace` is the base. explicit-task-dependencies (the `replace`
 // executor) must sort last, or it swallows the wrappers. Load-bearing numbers:
-//   5 worktree-isolation (the cd precedes every write), 7 progress-report,
-//   8 implement-prelude-skills, 9 parse-dont-validate (also orders the
-//   /speckit-constitution pair), 11 tdd, 20 explicit-task-dependencies.
+//   5 worktree-isolation (the cd precedes every write), 9 parse-dont-validate,
+//   11 tdd, 20 explicit-task-dependencies.
 // Everything else installs at the CLI default of 10.
 const PRIORITY: Record<string, number> = {
   "worktree-isolation": 5,
-  "progress-report": 7,
-  "implement-prelude-skills": 8,
   "ponytail-plan": 8, // speckit.plan only: outside library-research (10) and parse-dont-validate (9)
   "parse-dont-validate": 9,
   tdd: 11, // Red-Green-Refactor hugs the implementation, inside pdv
