@@ -1,0 +1,73 @@
+schema_version: "1.0"
+
+extension:
+  id: autopilot
+  name: "Issue Backlog Autopilot"
+  version: "0.4.0"
+  description: "Take the highest-priority eligible open GitHub issue from backlog to a reviewed draft PR by driving the full speckit pipeline unattended (specify → clarify → plan → tasks → implement → review), auto-answering clarify questions and posting progress to the issue at every stage."
+  author: imosquera
+  license: MIT
+
+requires:
+  speckit_version: ">=0.2.0"
+  tools:
+    - name: git
+      required: true
+    - name: gh
+      required: true
+
+provides:
+  scripts:
+    - name: autopilot-schedule.ts
+      file: scripts/ts/autopilot-schedule.ts
+      executable: true
+    - name: autopilot-run.ts
+      file: scripts/ts/autopilot-run.ts
+      executable: true
+    - name: stream-decode.ts
+      file: scripts/ts/stream-decode.ts
+      executable: true
+    - name: bind-feature-issue.ts
+      file: scripts/ts/bind-feature-issue.ts
+      executable: true
+      command: speckit.autopilot.run
+    - name: fetch-open-issues.ts
+      file: scripts/ts/fetch-open-issues.ts
+      executable: true
+      command: speckit.autopilot.run
+    - name: preflight-issues.ts
+      file: scripts/ts/preflight-issues.ts
+      executable: true
+      command: speckit.autopilot.run
+    - name: park-issue.ts
+      file: scripts/ts/park-issue.ts
+      executable: true
+      command: speckit.autopilot.run
+    - name: check-target-repo.ts
+      file: scripts/ts/check-target-repo.ts
+      executable: true
+      command: speckit.autopilot.run
+    - name: jev.ts
+      file: scripts/ts/jev.ts
+      executable: true
+      command: speckit.autopilot.run
+    - name: resolve-path.ts
+      file: scripts/ts/resolve-path.ts
+      executable: true
+    - name: py.ts
+      file: scripts/ts/py.ts
+      executable: false
+
+  commands:
+    - name: speckit.autopilot.run
+      file: commands/speckit.autopilot.run.md
+      description: "Pick the highest-priority eligible open issue (or a given issue number), create its worktree, run the full speckit pipeline unattended, and open a draft PR that closes it"
+    - name: speckit.autopilot.schedule
+      file: commands/speckit.autopilot.schedule.md
+      description: "Schedule /speckit-autopilot-run on a recurring launchd timer (default every 2h, configurable); also unschedule, status, or run-now. Opt-in, macOS only"
+
+tags:
+  - "workflow"
+  - "github"
+  - "automation"
+  - "orchestration"

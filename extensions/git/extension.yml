@@ -1,0 +1,224 @@
+schema_version: "1.0"
+
+extension:
+  id: git
+  name: "Git Branching Workflow"
+  version: "1.9.0"
+  description: "Feature branch creation, worktree management, feature cleanup, auto-commit hooks, and PR creation"
+  author: spec-kit-core
+  repository: https://github.com/github/spec-kit
+  license: MIT
+
+requires:
+  speckit_version: ">=0.2.0"
+  tools:
+    - name: git
+      required: false
+
+provides:
+  scripts:
+    - name: create-new-feature.ts
+      file: scripts/ts/create-new-feature.ts
+      executable: true
+      command: speckit.git.feature
+    - name: worktree-add.ts
+      file: scripts/ts/worktree-add.ts
+      executable: true
+      command: speckit.git.worktree
+    - name: seed-graph.ts
+      file: scripts/ts/seed-graph.ts
+      executable: true
+    - name: unexclude-graph.ts
+      file: scripts/ts/unexclude-graph.ts
+      executable: true
+    - name: install-deps.ts
+      file: scripts/ts/install-deps.ts
+      executable: true
+    - name: clean.ts
+      file: scripts/ts/clean.ts
+      executable: true
+      command: speckit.git.clean
+    - name: verify-landed.ts
+      file: scripts/ts/verify-landed.ts
+      executable: true
+      command: speckit.git.clean
+    - name: auto-commit.ts
+      file: scripts/ts/auto-commit.ts
+      executable: true
+      command: speckit.git.commit
+    - name: create-pr.ts
+      file: scripts/ts/create-pr.ts
+      executable: true
+      command: speckit.git.pr
+    - name: label-issue.ts
+      file: scripts/ts/label-issue.ts
+      executable: true
+      command: speckit.git.issue
+    - name: sync-issue-body.ts
+      file: scripts/ts/sync-issue-body.ts
+      executable: true
+      command: speckit.git.issue
+    - name: render-spec.ts
+      file: scripts/ts/render-spec.ts
+      executable: true
+      command: speckit.git.issue
+    - name: split-issue.ts
+      file: scripts/ts/split-issue.ts
+      executable: true
+      command: speckit.git.issue
+    # The one handler for `commit_exclude` churn; called by auto-commit.ts,
+    # create-pr.ts and clean.ts, and runnable on its own (issues #62, #55).
+    - name: scrub-commit-exclude.ts
+      file: scripts/ts/scrub-commit-exclude.ts
+      executable: true
+    - name: selftest-split-issue.ts
+      file: scripts/ts/selftest-split-issue.ts
+      executable: true
+    - name: find-duplicate-issues.ts
+      file: scripts/ts/find-duplicate-issues.ts
+      executable: true
+      command: speckit.git.issue
+    # Byte-identical copy of the repo-root scripts/jev.ts (never edit here).
+    - name: jev.ts
+      file: scripts/ts/jev.ts
+      executable: true
+      command: speckit.git.issue
+    # Libraries sourced by the scripts above; no command invokes them directly.
+    - name: git-common.ts
+      file: scripts/ts/git-common.ts
+      executable: false
+    - name: initialize-repo.ts
+      file: scripts/ts/initialize-repo.ts
+      executable: true
+
+  commands:
+    - name: speckit.git.feature
+      file: commands/speckit.git.feature.md
+      description: "Create a feature branch + worktree and (when gh is available) a linked GitHub issue numbered to match the spec"
+    - name: speckit.git.worktree
+      file: commands/speckit.git.worktree.md
+      description: "Create a new worktree under the project's ${PROJ}.worktrees collector"
+    - name: speckit.git.clean
+      file: commands/speckit.git.clean.md
+      description: "Clean up the current feature worktree, branch, issue, and uncommitted changes — refusing unless verify-landed.ts proves the branch's work is on the base"
+    - name: speckit.git.issue
+      file: commands/speckit.git.issue.md
+      description: "Update the linked GitHub issue's body from spec.md, keep its p0..p3 / bug|feature / frontend|backend|integration labels current, and split a full-stack feature into a mock-first frontend child, a backend child, and a blocked wire-up child (a manual run with no linked issue scans the existing issues for a duplicate to merge into and runs a /speckit-clarify pass first, then creates the issue)"
+    - name: speckit.git.commit
+      file: commands/speckit.git.commit.md
+      description: "Auto-commit changes after a Spec Kit command completes"
+    - name: speckit.git.pr
+      file: commands/speckit.git.pr.md
+      description: "Open a GitHub PR for the current feature branch, auto-appending Closes #N from .specify/feature.json when source_issue is set, copying the issue's labels onto the PR and stamping the agent session that produced it; --draft opens it as a draft and leaves the issue open"
+
+  config:
+    - name: "git-config.yml"
+      template: "config-template.yml"
+      description: "Git branching configuration"
+      required: false
+
+hooks:
+  before_specify:
+    command: speckit.git.feature
+    optional: false
+    description: "Create feature branch before specification"
+  before_clarify:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit outstanding changes before clarification?"
+    description: "Auto-commit before spec clarification"
+  before_plan:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit outstanding changes before planning?"
+    description: "Auto-commit before implementation planning"
+  before_tasks:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit outstanding changes before task generation?"
+    description: "Auto-commit before task generation"
+  before_implement:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit outstanding changes before implementation?"
+    description: "Auto-commit before implementation"
+  before_checklist:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit outstanding changes before checklist?"
+    description: "Auto-commit before checklist generation"
+  before_analyze:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit outstanding changes before analysis?"
+    description: "Auto-commit before analysis"
+  before_taskstoissues:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit outstanding changes before issue sync?"
+    description: "Auto-commit before tasks-to-issues conversion"
+  after_constitution:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit constitution changes?"
+    description: "Auto-commit after constitution update"
+  after_specify:
+    # DECLARATION ORDER IS LOAD-BEARING — do not reorder these two entries.
+    # The agent-driven hook runner iterates hooks.after_specify in the order
+    # they are registered, which is this manifest's order; it does not sort by
+    # `priority`. The priority values below only record the intended order.
+    # speckit.git.issue must come first because it can write `source_issue`
+    # into .specify/feature.json, which speckit.git.commit then picks up.
+    - command: speckit.git.issue
+      priority: 5
+      optional: false
+      description: "Update the feature's GitHub issue body from the rendered spec (clean no-op when no issue is linked)"
+    - command: speckit.git.commit
+      priority: 10
+      optional: true
+      prompt: "Commit specification changes?"
+      description: "Auto-commit after specification"
+  after_clarify:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit clarification changes?"
+    description: "Auto-commit after spec clarification"
+  after_plan:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit plan changes?"
+    description: "Auto-commit after implementation planning"
+  after_tasks:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit task changes?"
+    description: "Auto-commit after task generation"
+  after_implement:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit implementation changes?"
+    description: "Auto-commit after implementation"
+  after_checklist:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit checklist changes?"
+    description: "Auto-commit after checklist generation"
+  after_analyze:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit analysis results?"
+    description: "Auto-commit after analysis"
+  after_taskstoissues:
+    command: speckit.git.commit
+    optional: true
+    prompt: "Commit after syncing issues?"
+    description: "Auto-commit after tasks-to-issues conversion"
+
+tags:
+  - "git"
+  - "branching"
+  - "workflow"
+
+config:
+  defaults:
+    branch_numbering: sequential

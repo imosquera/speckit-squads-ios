@@ -1,0 +1,90 @@
+schema_version: "1.0"
+
+extension:
+  id: "review"
+  name: "Review Extension"
+  version: "2.1.0"
+  description: "Multi-agent code review with one engine for every scope — the current feature branch, the working directory, or a GitHub pull request (/speckit-review-run --pr N). Specialized agents cover code quality (incl. security and performance), architecture & API design, comments, tests, error handling, type design, and simplification; the simplify agent runs the `ponytail` review and audit skills (DietrichGebert/ponytail marketplace) when available, and the coordinator applies their behaviour-preserving cuts unless --no-fix. 2.0.0 removes /speckit-review-pr: use /speckit-review-run --pr N. 2.1.0 adds optional Jev assist (the shared jev.ts helper, @typesafe-ai/sdk installed lazily on first use) to dedupe and triage findings when TYPESAFE_API_KEY is set; SPECKIT_JEV=off disables it."
+  author: "beadbits"
+  repository: "local"
+  license: "MIT (upstream agents) and same-as-project (arch command, PR mode)"
+  homepage: "https://github.com/ismaelJimenez/spec-kit-review"
+  upstream:
+    source: "https://github.com/ismaelJimenez/spec-kit-review"
+    version: "1.0.1"
+    license: "MIT"
+    note: "Agents run/code/comments/tests/errors/types/simplify and detect-changed-files scripts are derived from upstream v1.0.1. See LICENSE-upstream."
+
+requires:
+  speckit_version: ">=0.1.0"
+
+  commands:
+    - "speckit.implement"
+
+provides:
+  config:
+    - name: "review-config.yml"
+      template: "config-template.yml"
+      description: "Review extension configuration — agent toggles for the coordinator"
+      required: false
+
+  scripts:
+    - name: "detect-changed-files.ts"
+      file: "scripts/ts/detect-changed-files.ts"
+      executable: true
+    - name: "jev.ts"
+      file: "scripts/ts/jev.ts"
+      command: "speckit.review.run"
+      executable: true
+
+  commands:
+    - name: "speckit.review.run"
+      file: "commands/run.md"
+      description: "Comprehensive code review using specialized agents (coordinator) — local changes or a GitHub PR (--pr N)"
+    - name: "speckit.review.arch"
+      file: "commands/arch.md"
+      description: "Architecture & API design review — public interfaces, exported types, contract and backward-compatibility changes, consistency with existing patterns"
+    - name: "speckit.review.code"
+      file: "commands/code.md"
+      description: "General code quality review — project guideline compliance, bug detection, security, performance"
+    - name: "speckit.review.comments"
+      file: "commands/comments.md"
+      description: "Code comment accuracy verification, documentation completeness, comment rot detection"
+    - name: "speckit.review.tests"
+      file: "commands/tests.md"
+      description: "Test coverage quality analysis — behavioral coverage, critical gap identification, test resilience evaluation"
+    - name: "speckit.review.errors"
+      file: "commands/errors.md"
+      description: "Error handling review — silent failure detection, catch block analysis, error logging"
+    - name: "speckit.review.types"
+      file: "commands/types.md"
+      description: "Type design analysis — encapsulation, invariant expression, usefulness, and enforcement"
+    - name: "speckit.review.simplify"
+      file: "commands/simplify.md"
+      description: "Code simplification suggestions — clarity, unnecessary complexity, redundant abstractions, ponytail review + audit"
+
+hooks:
+  after_implement:
+    command: "speckit.review.run"
+    optional: false
+    prompt: "Run comprehensive review on implemented changes?"
+    description: "Multi-agent code review after implementation (mandatory: surfaces constitution violations even when the upfront audit was skipped)"
+    condition: null
+
+tags:
+  - "review"
+  - "pr-review"
+  - "code-quality"
+  - "testing"
+  - "error-handling"
+  - "github"
+
+defaults:
+  agents:
+    code: true
+    arch: true
+    comments: true
+    tests: true
+    errors: true
+    types: true
+    simplify: true

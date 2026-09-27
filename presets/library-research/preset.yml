@@ -1,0 +1,34 @@
+schema_version: "1.0"
+
+preset:
+  id: "library-research"
+  name: "Library Research"
+  version: "1.1.0"
+  description: "Wraps /speckit-plan so that, after the plan is written, the agent researches whether existing libraries can replace hand-rolled build-it-yourself surface area identified in the plan (auth, parsing, queues, retries, etc.) using live web search. Findings and a recommendation per unknown are written to research.md; when a library is a clear win, plan.md is revised in place to reference it instead of a custom build. No-ops gracefully when the plan has no buildable surface area worth researching. Chainable via {CORE_TEMPLATE} so it composes with other speckit.plan wrappers (e.g. parse-dont-validate, spec-minimal)."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "jev.ts"
+      file: "scripts/ts/jev.ts"
+      command: "speckit.plan"
+      executable: true
+
+  templates:
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Composable wrapper for /speckit-plan that researches candidate libraries for the plan's technical unknowns via live web search and revises plan.md / writes research.md with findings."
+      strategy: "wrap"
+
+tags:
+  - "research"
+  - "libraries"
+  - "plan"
+  - "web-search"
+  - "build-vs-buy"
